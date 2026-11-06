@@ -1,0 +1,90 @@
+**/.git/
+
+# ===== Build outputs =====
+# CMake / C++
+build/
+build-*/
+cmake-build-*/
+out/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+CMakeUserPresets.json
+
+# Qt
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qmlc
+*.jsc
+*.pro.user
+*.pro.user.*
+
+# .NET / C#
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+project.fragment.json
+project.assets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+env/
+.venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ===== IDE =====
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cache/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+
+# ===== Compiled binaries =====
+*.exe
+*.so
+*.dylib
+*.o
+*.obj
+*.a
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Vendored libraries =====
+Tools/PakViewer/Libs/
+Tools/Avalonium/Helpers/lua-5.4.6/
+Tools/Avalonium/Helpers/minhook/
+Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/
+Tools/ModConflictDetector/Libs/CUE4Parse/
+Installer/cmake/Installer/lzmasdk/
+Installer/cmake/Uninstaller/lzmasdk/

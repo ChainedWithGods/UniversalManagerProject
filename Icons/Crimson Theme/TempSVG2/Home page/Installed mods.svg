@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+	<linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#42000d"/>
+		<stop offset="0.5" stop-color="#ea3461"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+	<linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+		<stop offset="0" stop-color="#440001"/>
+		<stop offset="0.45" stop-color="#910202"/>
+		<stop offset="0.6" stop-color="#d73838"/>
+		<stop offset="0.8" stop-color="#c80000"/>
+		<stop offset="1" stop-color="#f23326"/>
+	</linearGradient>
+	<linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#F23326"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+</defs>
+<g id="Folder_1_">
+	<path style="fill:url(#crimsonAccent);" d="M196,312V200c0-19.241,13.588-35.304,31.69-39.13c-2.696-0.569-5.461-0.87-8.259-0.87H176&#10;&#9;&#9;c-22.091,0-40,17.909-40,40v112c0,22.091,17.909,40,40,40h60C213.909,352,196,334.091,196,312z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M276,200l-28.284-28.284C240.214,164.214,230.04,160,219.431,160H176c-22.091,0-40,17.909-40,40v112c0,22.091,17.909,40,40,40h160&#10;&#9;&#9;c22.091,0,40-17.909,40-40v-72c0-22.091-17.909-40-40-40H276z"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="256" y1="20" x2="256" y2="80"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M336,80l28.125-42.188C371.544,26.684,384.033,20,397.407,20H492"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M176,80l-28.125-42.188C140.456,26.684,127.967,20,114.593,20H20"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="256" y1="432" x2="256" y2="492"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M336,432l28.125,42.188C371.544,485.316,384.033,492,397.407,492H492"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M176,432l-28.125,42.188C140.456,485.316,127.967,492,114.593,492H20"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

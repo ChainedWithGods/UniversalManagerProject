@@ -1,0 +1,18 @@
+<svg id="Capa_1" enable-background="new 0 0 512 512" height="512" viewBox="0 0 512 512" width="512" xmlns="http://www.w3.org/2000/svg"><defs>
+  <linearGradient id="gemOrange" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#FFC06B"/>
+    <stop offset="1" stop-color="#F53241"/>
+  </linearGradient>
+  <linearGradient id="gemRed" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#FF5C6E"/>
+    <stop offset="1" stop-color="#C80000"/>
+  </linearGradient>
+  <linearGradient id="gemCrimson" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#EA3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="gemDark" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#B00038"/>
+    <stop offset="1" stop-color="#5A1A48"/>
+  </linearGradient>
+</defs><g><path d="m512 174.176-256 294.581-256-294.581 256-35.197z" fill="url(#gemCrimson)"/><path d="m512 174.176-256 294.581v-329.778z" fill="url(#gemDark)"/><path d="m384.502 108.71-30.308 65.466-98.194-58.559-98.194 58.559-29.806-65.466v-65.465h256z" fill="url(#gemCrimson)"/><path d="m384.502 108.71-30.308 65.466-98.194-58.559v-72.372h128z" fill="url(#gemDark)"/><path d="m354.194 174.176h-196.388l98.194-130.931z" fill="url(#gemOrange)"/><path d="m354.194 174.176h-98.194v-130.931z" fill="url(#gemRed)"/><path d="m128 43.243-128 130.929h157.804z" fill="url(#gemOrange)"/><path d="m354.196 174.172h157.804l-128-130.929z" fill="url(#gemRed)"/><path d="m354.194 174.176-98.194 294.581-98.194-294.581z" fill="url(#gemRed)"/><path d="m354.194 174.176-98.194 294.581v-294.581z" fill="url(#gemCrimson)"/></g></svg>

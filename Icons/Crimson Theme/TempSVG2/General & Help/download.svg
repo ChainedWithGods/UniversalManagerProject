@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs>
+<g id="Download">
+	<path style="fill:url(#crimsonAccent);" d="M167.599,280.401c-7.2-7.2-11.599-17.2-11.599-28.401c0-12.611,6.206-23.494,15.476-30.727&#10;&#9;&#9;c2.849-2.223,4.524-5.647,4.524-9.261V212h-40c-22,0-40,18-40,40c0,11.201,4.399,21.201,11.599,28.401l120,120&#10;&#9;&#9;c7.2,7.2,17.2,11.599,28.401,11.599s21.201-4.399,28.401-11.599l1.599-1.599L167.599,280.401z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M416,252c0-22-18-40-40-40h-40V60c0-22.091-17.909-40-40-40h-80c-22.091,0-40,17.909-40,40v152h-40c-22,0-40,18-40,40&#10;&#9;&#9;c0,11.201,4.399,21.201,11.599,28.401l120,120c7.2,7.2,17.2,11.599,28.401,11.599s21.201-4.399,28.401-11.599l120-120&#10;&#9;&#9;C411.601,273.201,416,263.201,416,252z"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M456,412v40c0,22.091-17.909,40-40,40H96c-22.091,0-40-17.909-40-40v-40"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

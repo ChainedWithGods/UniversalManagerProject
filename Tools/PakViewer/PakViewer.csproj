@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+        <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+        <OutputType>WinExe</OutputType>
+        <DefaultItemExcludes>$(DefaultItemExcludes);Libs\**;Temp\**;example\**</DefaultItemExcludes>
+
+        <Version>1.1.1.1</Version>
+        <AssemblyVersion>1.1.1.1</AssemblyVersion>
+        <FileVersion>1.1.1.1</FileVersion>
+        <InformationalVersion>1.1.1.1</InformationalVersion>
+
+        <UseWinUI>true</UseWinUI>
+        <EnableMsixTooling>true</EnableMsixTooling>
+        <WindowsPackageType>None</WindowsPackageType>
+        <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+        <SelfContained>false</SelfContained>
+        <PublishSingleFile>false</PublishSingleFile>
+
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>PakViewer</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <PlatformTarget>x64</PlatformTarget>
+        <Company>Universal Manager Project</Company>
+        <Product>PakViewer</Product>
+        <Description>PakViewer - Unreal Engine Pak File Viewer</Description>
+        <Copyright>Copyright (C) 2026 Universal Mananger Project.</Copyright>
+
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <DebugType>none</DebugType>
+        <DebugSymbols>false</DebugSymbols>
+        <TrimMode>link</TrimMode>
+        <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+
+        <ApplicationIcon>Icons\PakViewer.ico</ApplicationIcon>
+        <UseRidGraph>true</UseRidGraph>
+        <Platforms>AnyCPU;x64</Platforms>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        
+        <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8605;CS8618;CS8620;CS8625;CS8629;CS8631</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Content Include="Assets\SplashScreen.scale-200.png" />
+        <Content Include="Assets\LockScreenLogo.scale-200.png" />
+        <Content Include="Assets\Square150x150Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+        <Content Include="Assets\StoreLogo.png" />
+        <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+        <Content Include="Icons\atom.ico" />
+        <Content Include="Icons\Blueprint.ico" />
+        <Content Include="Icons\Character.ico" />
+        <Content Include="Icons\Accessories.ico" />
+        <Content Include="Icons\Animations.ico" />
+        <Content Include="Icons\data.ico" />
+        <Content Include="Icons\Cloth.ico" />
+        <Content Include="Icons\Config.ico" />
+        <Content Include="Icons\Content.ico" />
+        <Content Include="Icons\Engine.ico" />
+        <Content Include="Icons\Female.ico" />
+        <Content Include="Icons\Folder.ico" />
+        <Content Include="Icons\Gun.ico" />
+        <Content Include="Icons\Item.ico" />
+        <Content Include="Icons\Localization.ico" />
+        <Content Include="Icons\Makeup.ico" />
+        <Content Include="Icons\Male.ico" />
+        <Content Include="Icons\Material.ico" />
+        <Content Include="Icons\Model.ico" />
+        <Content Include="Icons\Music.ico" />
+        <Content Include="Icons\Npc.ico" />
+        <Content Include="Icons\Platform.ico" />
+        <Content Include="Icons\Plugins.ico" />
+        <Content Include="Icons\Project.ico" />
+        <Content Include="Icons\Physics.ico" />
+        <Content Include="Icons\Skeleton.ico" />
+        <Content Include="Icons\StaticSK.ico" />
+        <Content Include="Icons\Materials.ico" />
+        <Content Include="Icons\STextures.ico" />
+        <Content Include="Icons\MSounds.ico" />
+        <Content Include="Icons\Skin.ico" />
+        <Content Include="Icons\Textures.ico" />
+        <Content Include="Icons\Types.ico" />
+        <Content Include="Icons\UI.ico" />
+        <Content Include="Icons\unisex.ico" />
+        <Content Include="Icons\World.ico" />
+        <Content Include="Icons\PakViewer.png">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Icons\PakViewer.ico">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Icons\3Ds_Viewer.ico">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Remove="PakViewer.slnx" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+        <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+        <PackageReference Include="CommunityToolkit.WinUI.UI.Controls" Version="7.1.2" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="OpenTK" Version="4.9.4" />
+        <PackageReference Include="Serilog" Version="4.4.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+        <PackageReference Include="SkiaSharp" Version="4.151.2" />
+        <PackageReference Include="Svg.Skia" Version="5.2.3" />
+        <PackageReference Include="Ww2Ogg.Core" Version="1.0.0" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <ProjectReference Include="Libs\CUE4Parse\CUE4Parse\CUE4Parse.csproj" />
+        <ProjectReference Include="Libs\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="Libs\CUE4Parse\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll" Condition="Exists('Libs\CUE4Parse\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>CUE4Parse-Natives.dll</TargetPath>
+        </None>
+        <None Include="Libs\vgmstream-cli.exe" Condition="Exists('Libs\vgmstream-cli.exe')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>vgmstream-cli.exe</TargetPath>
+        </None>
+        <None Include="Libs\avcodec-vgmstream-59.dll" Condition="Exists('Libs\avcodec-vgmstream-59.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>avcodec-vgmstream-59.dll</TargetPath>
+        </None>
+        <None Include="Libs\avformat-vgmstream-59.dll" Condition="Exists('Libs\avformat-vgmstream-59.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>avformat-vgmstream-59.dll</TargetPath>
+        </None>
+        <None Include="Libs\avutil-vgmstream-57.dll" Condition="Exists('Libs\avutil-vgmstream-57.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>avutil-vgmstream-57.dll</TargetPath>
+        </None>
+        <None Include="Libs\swresample-vgmstream-4.dll" Condition="Exists('Libs\swresample-vgmstream-4.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>swresample-vgmstream-4.dll</TargetPath>
+        </None>
+        <None Include="Libs\libatrac9.dll" Condition="Exists('Libs\libatrac9.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libatrac9.dll</TargetPath>
+        </None>
+        <None Include="Libs\libcelt-0061.dll" Condition="Exists('Libs\libcelt-0061.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libcelt-0061.dll</TargetPath>
+        </None>
+        <None Include="Libs\libcelt-0110.dll" Condition="Exists('Libs\libcelt-0110.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libcelt-0110.dll</TargetPath>
+        </None>
+        <None Include="Libs\libg719_decode.dll" Condition="Exists('Libs\libg719_decode.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libg719_decode.dll</TargetPath>
+        </None>
+        <None Include="Libs\libmpg123-0.dll" Condition="Exists('Libs\libmpg123-0.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libmpg123-0.dll</TargetPath>
+        </None>
+        <None Include="Libs\libspeex-1.dll" Condition="Exists('Libs\libspeex-1.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libspeex-1.dll</TargetPath>
+        </None>
+        <None Include="Libs\libvorbis.dll" Condition="Exists('Libs\libvorbis.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libvorbis.dll</TargetPath>
+        </None>
+       
+        <None Include="Libs\CUE4Parse\CUE4Parse\UE4\Versions\EGame.cs" Condition="Exists('Libs\CUE4Parse\CUE4Parse\UE4\Versions\EGame.cs')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>Libs\EGame.cs</Link>
+        </None>
+    </ItemGroup>
+    
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\Shaders\*.vert" />
+        <EmbeddedResource Include="Resources\Shaders\*.frag" />
+        <EmbeddedResource Include="Resources\*.png" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+        <ProjectCapability Include="Msix" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+        <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+    </PropertyGroup>
+
+    <Target Name="RemoveUnnecessaryLanguageFolders" AfterTargets="Build">
+        <ItemGroup>
+            <LanguageFoldersToDelete Include="$(OutDir)af-ZA" />
+            <LanguageFoldersToDelete Include="$(OutDir)am-ET" />
+            <LanguageFoldersToDelete Include="$(OutDir)ar-SA" />
+            <LanguageFoldersToDelete Include="$(OutDir)as-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)az-Latn-AZ" />
+            <LanguageFoldersToDelete Include="$(OutDir)bg-BG" />
+            <LanguageFoldersToDelete Include="$(OutDir)bn-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)bs-Latn-BA" />
+            <LanguageFoldersToDelete Include="$(OutDir)ca-ES" />
+            <LanguageFoldersToDelete Include="$(OutDir)ca-Es-VALENCIA" />
+            <LanguageFoldersToDelete Include="$(OutDir)cs-CZ" />
+            <LanguageFoldersToDelete Include="$(OutDir)cy-GB" />
+            <LanguageFoldersToDelete Include="$(OutDir)da-DK" />
+            <LanguageFoldersToDelete Include="$(OutDir)de-DE" />
+            <LanguageFoldersToDelete Include="$(OutDir)el-GR" />
+            <LanguageFoldersToDelete Include="$(OutDir)en-GB" />
+            <LanguageFoldersToDelete Include="$(OutDir)es-ES" />
+            <LanguageFoldersToDelete Include="$(OutDir)es-MX" />
+            <LanguageFoldersToDelete Include="$(OutDir)et-EE" />
+            <LanguageFoldersToDelete Include="$(OutDir)eu-ES" />
+            <LanguageFoldersToDelete Include="$(OutDir)fa-IR" />
+            <LanguageFoldersToDelete Include="$(OutDir)fi-FI" />
+            <LanguageFoldersToDelete Include="$(OutDir)fil-PH" />
+            <LanguageFoldersToDelete Include="$(OutDir)fr-CA" />
+            <LanguageFoldersToDelete Include="$(OutDir)fr-FR" />
+            <LanguageFoldersToDelete Include="$(OutDir)ga-IE" />
+            <LanguageFoldersToDelete Include="$(OutDir)gd-gb" />
+            <LanguageFoldersToDelete Include="$(OutDir)gl-ES" />
+            <LanguageFoldersToDelete Include="$(OutDir)gu-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)he-IL" />
+            <LanguageFoldersToDelete Include="$(OutDir)hi-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)hr-HR" />
+            <LanguageFoldersToDelete Include="$(OutDir)hu-HU" />
+            <LanguageFoldersToDelete Include="$(OutDir)hy-AM" />
+            <LanguageFoldersToDelete Include="$(OutDir)id-ID" />
+            <LanguageFoldersToDelete Include="$(OutDir)is-IS" />
+            <LanguageFoldersToDelete Include="$(OutDir)it-IT" />
+            <LanguageFoldersToDelete Include="$(OutDir)ja-JP" />
+            <LanguageFoldersToDelete Include="$(OutDir)ka-GE" />
+            <LanguageFoldersToDelete Include="$(OutDir)kk-KZ" />
+            <LanguageFoldersToDelete Include="$(OutDir)km-KH" />
+            <LanguageFoldersToDelete Include="$(OutDir)kn-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)ko-KR" />
+            <LanguageFoldersToDelete Include="$(OutDir)kok-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)lb-LU" />
+            <LanguageFoldersToDelete Include="$(OutDir)lo-LA" />
+            <LanguageFoldersToDelete Include="$(OutDir)lt-LT" />
+            <LanguageFoldersToDelete Include="$(OutDir)lv-LV" />
+            <LanguageFoldersToDelete Include="$(OutDir)mi-NZ" />
+            <LanguageFoldersToDelete Include="$(OutDir)mk-MK" />
+            <LanguageFoldersToDelete Include="$(OutDir)ml-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)mr-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)ms-MY" />
+            <LanguageFoldersToDelete Include="$(OutDir)mt-MT" />
+            <LanguageFoldersToDelete Include="$(OutDir)nb-NO" />
+            <LanguageFoldersToDelete Include="$(OutDir)ne-NP" />
+            <LanguageFoldersToDelete Include="$(OutDir)nl-NL" />
+            <LanguageFoldersToDelete Include="$(OutDir)nn-NO" />
+            <LanguageFoldersToDelete Include="$(OutDir)or-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)pa-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)pl-PL" />
+            <LanguageFoldersToDelete Include="$(OutDir)pt-BR" />
+            <LanguageFoldersToDelete Include="$(OutDir)pt-PT" />
+            <LanguageFoldersToDelete Include="$(OutDir)quz-PE" />
+            <LanguageFoldersToDelete Include="$(OutDir)ro-RO" />
+            <LanguageFoldersToDelete Include="$(OutDir)ru-RU" />
+            <LanguageFoldersToDelete Include="$(OutDir)sk-SK" />
+            <LanguageFoldersToDelete Include="$(OutDir)sl-SI" />
+            <LanguageFoldersToDelete Include="$(OutDir)sq-AL" />
+            <LanguageFoldersToDelete Include="$(OutDir)sr-Cyrl-BA" />
+            <LanguageFoldersToDelete Include="$(OutDir)sr-Cyrl-RS" />
+            <LanguageFoldersToDelete Include="$(OutDir)sr-Latn-RS" />
+            <LanguageFoldersToDelete Include="$(OutDir)sv-SE" />
+            <LanguageFoldersToDelete Include="$(OutDir)ta-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)te-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)th-TH" />
+            <LanguageFoldersToDelete Include="$(OutDir)tr-TR" />
+            <LanguageFoldersToDelete Include="$(OutDir)tt-RU" />
+            <LanguageFoldersToDelete Include="$(OutDir)ug-CN" />
+            <LanguageFoldersToDelete Include="$(OutDir)uk-UA" />
+            <LanguageFoldersToDelete Include="$(OutDir)ur-PK" />
+            <LanguageFoldersToDelete Include="$(OutDir)uz-Latn-UZ" />
+            <LanguageFoldersToDelete Include="$(OutDir)vi-VN" />
+            <LanguageFoldersToDelete Include="$(OutDir)zh-CN" />
+            <LanguageFoldersToDelete Include="$(OutDir)zh-TW" />
+        </ItemGroup>
+        <RemoveDir Directories="@(LanguageFoldersToDelete)" ContinueOnError="true" />
+        <Message Text="Removed unnecessary language folders from output directory" Importance="high" />
+    </Target>
+
+    <Target Name="RemovePdbFiles" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+        <ItemGroup>
+            <PdbFilesToDelete Include="$(OutDir)**\*.pdb" />
+        </ItemGroup>
+        <Delete Files="@(PdbFilesToDelete)" ContinueOnError="true" />
+        <Message Text="Removed .pdb files from Release build output" Importance="high" />
+    </Target>
+
+    <Target Name="RemoveUnnecessaryLanguageFoldersFromPublish" AfterTargets="Publish">
+        <ItemGroup>
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)af-ZA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)am-ET" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ar-SA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)as-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)az-Latn-AZ" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)bg-BG" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)bn-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)bs-Latn-BA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ca-ES" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ca-Es-VALENCIA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)cs-CZ" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)cy-GB" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)da-DK" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)de-DE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)el-GR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)en-GB" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)es-ES" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)es-MX" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)et-EE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)eu-ES" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)fa-IR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)fi-FI" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)fil-PH" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)fr-CA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)fr-FR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ga-IE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)gd-gb" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)gl-ES" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)gu-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)he-IL" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)hi-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)hr-HR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)hu-HU" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)hy-AM" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)id-ID" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)is-IS" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)it-IT" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ja-JP" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ka-GE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)kk-KZ" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)km-KH" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)kn-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ko-KR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)kok-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)lb-LU" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)lo-LA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)lt-LT" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)lv-LV" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)mi-NZ" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)mk-MK" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ml-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)mr-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ms-MY" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)mt-MT" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)nb-NO" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ne-NP" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)nl-NL" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)nn-NO" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)or-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)pa-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)pl-PL" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)pt-BR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)pt-PT" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)quz-PE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ro-RO" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ru-RU" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sk-SK" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sl-SI" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sq-AL" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sr-Cyrl-BA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sr-Cyrl-RS" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sr-Latn-RS" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)sv-SE" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ta-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)te-IN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)th-TH" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)tr-TR" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)tt-RU" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ug-CN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)uk-UA" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)ur-PK" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)uz-Latn-UZ" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)vi-VN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)zh-CN" />
+            <PublishLanguageFoldersToDelete Include="$(PublishDir)zh-TW" />
+        </ItemGroup>
+        <RemoveDir Directories="@(PublishLanguageFoldersToDelete)" ContinueOnError="true" />
+        <Message Text="Removed unnecessary language folders from publish directory" Importance="high" />
+    </Target>
+
+    <Target Name="RemovePdbFilesFromPublish" AfterTargets="Publish" Condition="'$(Configuration)' == 'Release'">
+        <ItemGroup>
+            <PublishPdbFilesToDelete Include="$(PublishDir)**\*.pdb" />
+        </ItemGroup>
+        <Delete Files="@(PublishPdbFilesToDelete)" ContinueOnError="true" />
+        <Message Text="Removed .pdb files from publish directory" Importance="high" />
+    </Target>
+</Project>

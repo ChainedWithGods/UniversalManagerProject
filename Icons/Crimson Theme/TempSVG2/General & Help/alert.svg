@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Layer_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs>
+<g>
+	<path style="fill:url(#crimsonAccent);" d="M286.203,410.19C214.301,396.281,160,333.01,160,257.045c0-75.893,54.199-139.118,126-153.106&#10;&#9;&#9;c-9.709-1.892-19.737-2.894-30-2.894c-86.156,0-156,69.844-156,156c0,86.156,69.844,156,156,156v0.078&#10;&#9;&#9;C266.334,413.123,276.43,412.108,286.203,410.19z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M89.123,422.877c-92.164-92.164-92.164-241.591,0-333.754 M422.877,422.877c92.164-92.164,92.164-241.591,0-333.754 M256,413.123&#10;&#9;&#9;c86.156,0,156-69.844,156-156v-0.078c0-86.156-69.844-156-156-156s-156,69.844-156,156s69.844,156,156,156"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M256,326.123c-2.761,0-5,2.239-5,5s2.239,5,5,5s5-2.239,5-5S258.761,326.123,256,326.123z M256,181.045v81"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

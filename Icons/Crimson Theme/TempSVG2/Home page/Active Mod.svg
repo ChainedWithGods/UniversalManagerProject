@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+	<linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#42000d"/>
+		<stop offset="0.5" stop-color="#ea3461"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+	<linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+		<stop offset="0" stop-color="#440001"/>
+		<stop offset="0.45" stop-color="#910202"/>
+		<stop offset="0.6" stop-color="#d73838"/>
+		<stop offset="0.8" stop-color="#c80000"/>
+		<stop offset="1" stop-color="#f23326"/>
+	</linearGradient>
+	<linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#F23326"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+</defs>
+<g>
+	<path style="fill:url(#crimsonAccent);" d="M80,452V80c0-33.137,26.863-60,60-60H80c-33.137,0-60,26.863-60,60v372c0,22.091,17.909,40,40,40h60&#10;&#9;&#9;C97.909,492,80,474.091,80,452z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M60,492h312c22.091,0,40-17.909,40-40v-20c0-11.046-8.954-20-20-20l-252,0c-21.915,0-40.269,17.592-40.003,39.505&#10;&#9;&#9;C100.267,473.823,82.256,492,60,492c-22.091,0-40-17.909-40-40V80c0-33.137,26.863-60,60-60h192c33.137,0,60,26.863,60,60v252"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M452,20c22.091,0,40,17.909,40,40v238.898L452,372l-40-73.102V60C412,37.909,429.909,20,452,20z"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="412" y1="100" x2="492" y2="100"/>
+	
+		<polyline style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" points="&#10;&#9;&#9;100,140 140,180 220,100 &#9;"/>
+	
+		<polyline style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" points="&#10;&#9;&#9;100,292 140,332 220,252 &#9;"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

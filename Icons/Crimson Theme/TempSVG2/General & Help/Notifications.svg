@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs>
+<g id="Notification_Bell">
+	<path style="fill:url(#crimsonAccent);" d="M116,372c0-13.112,6.314-24.744,16.063-32.036c2.501-1.871,3.937-4.84,3.937-7.964H96.79&#10;&#9;&#9;c-22.427,0-41.209,18.353-40.783,40.776C56.421,394.508,74.167,412,96,412h60C133.908,412,116,394.09,116,372z"/>
+	
+		<circle style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" cx="256" cy="452" r="40"/>
+	
+		<circle style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" cx="256" cy="60" r="40"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M256,100c-66.274,0-120,53.726-120,120v72c0,22.091-17.909,40-40,40c-22.092,0-40,17.908-40,40c0,22.09,17.908,40,40,40h320&#10;&#9;&#9;c22.092,0,40-17.91,40-40c0-22.092-17.908-40-40-40c-22.091,0-40-17.909-40-40v-72c0-30.754-11.569-58.805-30.592-80.04"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="216" y1="332" x2="296" y2="332"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="20" y1="180" x2="56" y2="180"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="56" y1="60" x2="96" y2="100"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="416" y1="100" x2="456" y2="60"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="456" y1="180" x2="492" y2="180"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

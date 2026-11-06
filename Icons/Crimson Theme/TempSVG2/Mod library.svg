@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Layer_1" x="0px" y="0px" viewBox="0 0 512.92 512.92" style="enable-background:new 0 0 512.92 512.92;" xml:space="preserve" width="512" height="512">
+<defs>
+	<linearGradient id="librarySpine" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#42000d"/>
+		<stop offset="0.5" stop-color="#ea3461"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+	<linearGradient id="libraryStroke" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="493">
+		<stop offset="0" stop-color="#440001"/>
+		<stop offset="0.45" stop-color="#910202"/>
+		<stop offset="0.6" stop-color="#d73838"/>
+		<stop offset="0.8" stop-color="#c80000"/>
+		<stop offset="1" stop-color="#f23326"/>
+	</linearGradient>
+	<linearGradient id="libraryShelf" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#f23326"/>
+		<stop offset="1" stop-color="#1e0004"/>
+	</linearGradient>
+</defs>
+<g>
+	<path style="fill:url(#librarySpine);" d="M67.156,493.895l12.617-0.158c3.749-4.668,7.288-9.472,10.479-14.469&#10;&#9;&#9;c2.202-3.447,4.309-6.982,6.41-10.53c-9.443-10.035-14.899-24.009-14.899-43.279v-305c0-55.229,44.771-100,100-100H120&#10;&#9;&#9;c-55.229,0-100,44.771-100,100l1.759,328.841C21.892,474.189,42.27,494.206,67.156,493.895z"/>
+	<path style="fill:none;stroke:url(#libraryStroke);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M178,492.46h193c47.436,0,88.345-33.326,97.935-79.783l22.304-108.043c10.247-49.639-27.662-96.174-78.348-96.174H236.622&#10;&#9;&#9;c-47.703,0-88.764,33.694-98.076,80.48L106,452.46c-5.941,21.783-24.04,39.991-46.247,39.998C37.885,492.464,20,473.823,20,451.955&#10;&#9;&#9;l0-102.495v-229c0-55.228,44.772-100,100-100h66c55.228,0,100,44.772,100,100h101c22.735,0,43.433,8.721,58.932,23"/>
+	
+		<line style="fill:none;stroke:url(#libraryShelf);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="226" y1="323.46" x2="394" y2="323.46"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

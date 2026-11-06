@@ -1,0 +1,19 @@
+<svg id="Capa_1" enable-background="new 0 0 512 512" height="512" viewBox="0 0 512 512" width="512" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs><g><path d="m80 396v-80c0-44.183 35.817-80 80-80h-60c-44.183 0-80 35.817-80 80v80c0 44.183 35.817 80 80 80h60c-44.183 0-80-35.817-80-80z" fill="url(#crimsonAccent)"/><g fill="url(#crimsonMain)"><circle cx="100" cy="316" r="20"/><circle cx="176" cy="316" r="20"/><circle cx="256" cy="316" r="20"/><circle cx="336" cy="316" r="20"/><circle cx="336" cy="396" r="20"/><circle cx="412" cy="316" r="20"/><circle cx="100" cy="396" r="20"/><circle cx="412" cy="396" r="20"/><path d="m412 496h-312c-55.141 0-100-44.86-100-100v-80c0-55.14 44.859-100 100-100h312c55.141 0 100 44.86 100 100v80c0 55.14-44.859 100-100 100zm-312-240c-33.084 0-60 26.916-60 60v80c0 33.084 26.916 60 60 60h312c33.084 0 60-26.916 60-60v-80c0-33.084-26.916-60-60-60z"/><path d="m256 416h-80c-11.046 0-20-8.954-20-20s8.954-20 20-20h80c11.046 0 20 8.954 20 20s-8.954 20-20 20z"/></g><path d="m256 176c-11.046 0-20-8.954-20-20 0-33.084 26.916-60 60-60h80c11.028 0 20-8.972 20-20v-40c0-11.046 8.954-20 20-20s20 8.954 20 20v40c0 33.084-26.916 60-60 60h-80c-11.028 0-20 8.972-20 20 0 11.046-8.954 20-20 20z" fill="url(#crimsonMark)"/></g></svg>

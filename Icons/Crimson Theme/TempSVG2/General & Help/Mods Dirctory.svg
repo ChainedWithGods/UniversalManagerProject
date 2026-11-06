@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Layer_1" x="0px" y="0px" viewBox="0 0 513 513" style="enable-background:new 0 0 513 513;" xml:space="preserve" width="512" height="512">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="513">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs>
+<g>
+	<path style="fill:url(#crimsonAccent);" d="M140,267.519H80c-33.137,0-60-26.863-60-60V70.482c0-27.614,22.386-50,50-50h42.912&#10;&#9;&#9;c2.914,0,5.765,0.264,8.542,0.742C97.913,25.281,80,45.783,80,70.482v137.037C80,240.656,106.863,267.519,140,267.519z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M146,267.519H80c-33.137,0-60-26.863-60-60V70.482c0-27.614,22.386-50,50-50h42.912c27.64,0,50.024,22.448,49.944,50.088v0H226&#10;&#9;&#9;c33.137,0,60,26.863,60,60v35.912 M227,303.482v-8c0-27.614,22.386-50,50-50h42.912c27.64,0,50.024,22.448,49.944,50.088v0H433&#10;&#9;&#9;c33.137,0,60,26.863,60,60v76.928c0,33.131-26.853,59.991-59.984,60L333,492.518"/>
+	<path style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M234,492.482l26.289-26.166c15.615-15.567,15.615-40.806,0-56.373L234,384.482 M80,345.482v41c0,27.614,22.386,50,50,50h63"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>

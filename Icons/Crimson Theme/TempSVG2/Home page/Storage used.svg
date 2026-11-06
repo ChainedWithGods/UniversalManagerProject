@@ -1,0 +1,18 @@
+<svg id="Capa_1" enable-background="new 0 0 512 512" height="512" viewBox="0 0 512 512" width="512" xmlns="http://www.w3.org/2000/svg"><defs>
+	<linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#42000d"/>
+		<stop offset="0.5" stop-color="#ea3461"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+	<linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+		<stop offset="0" stop-color="#440001"/>
+		<stop offset="0.45" stop-color="#910202"/>
+		<stop offset="0.6" stop-color="#d73838"/>
+		<stop offset="0.8" stop-color="#c80000"/>
+		<stop offset="1" stop-color="#f23326"/>
+	</linearGradient>
+	<linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+		<stop offset="0" stop-color="#F23326"/>
+		<stop offset="1" stop-color="#920202"/>
+	</linearGradient>
+</defs><g><path d="m80 412v-312c0-44.183 35.817-80 80-80h-60c-44.183 0-80 35.817-80 80v312c0 44.183 35.817 80 80 80h60c-44.183 0-80-35.817-80-80z" fill="url(#crimsonAccent)"/><g fill="url(#crimsonMain)"><path d="m408.569 23.431s-.001-.001-.001-.001c-15.112-15.109-35.201-23.43-56.568-23.43h-252c-55.14 0-100 44.86-100 100v312c0 55.14 44.86 100 100 100h312c55.14 0 100-44.86 100-100v-252c0-21.368-8.321-41.457-23.431-56.569zm63.431 388.569c0 33.084-26.916 60-60 60h-312c-33.084 0-60-26.916-60-60v-312c0-33.084 26.916-60 60-60h252c10.684 0 20.729 4.161 28.285 11.716l80 80c7.554 7.555 11.715 17.6 11.715 28.284z"/><circle cx="256" cy="336" r="20"/><path d="m336 80c-11.046 0-20 8.954-20 20v40c0 11.028-8.972 20-20 20h-120c-11.028 0-20-8.972-20-20v-40c0-11.046-8.954-20-20-20s-20 8.954-20 20v40c0 33.084 26.916 60 60 60h120c33.084 0 60-26.916 60-60v-40c0-11.046-8.954-20-20-20z"/><path d="m216 120h40c11.046 0 20-8.954 20-20s-8.954-20-20-20h-40c-11.046 0-20 8.954-20 20s8.954 20 20 20z"/></g><path d="m156 336c0 55.14 44.86 100 100 100s100-44.86 100-100-44.86-100-100-100-100 44.86-100 100zm100-60c33.084 0 60 26.916 60 60s-26.916 60-60 60-60-26.916-60-60 26.916-60 60-60z" fill="url(#crimsonMark)"/></g></svg>

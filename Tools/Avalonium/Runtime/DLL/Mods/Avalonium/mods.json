@@ -1,0 +1,20 @@
+{
+    "mods": [
+        {
+            "enabled": false,
+            "name": "GenericFunctions"
+        },
+        {
+            "enabled": false,
+            "name": "BPModLoader"
+        },
+        {
+            "enabled": false,
+            "name": "UniversalHUDToggle"
+        },
+        {
+            "enabled": false,
+            "name": "UniversalOverlay"
+        }
+    ]
+}

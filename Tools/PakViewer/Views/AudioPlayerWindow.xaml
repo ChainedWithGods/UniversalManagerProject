@@ -1,0 +1,175 @@
+<Window
+    x:Class="PakViewer.Views.AudioPlayerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt"/>
+    </Window.SystemBackdrop>
+
+    <Grid Background="{ThemeResource LayerFillColorDefaultBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Padding="16,12">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#AB47BC" Offset="0"/>
+                    <GradientStop Color="#7B1FA2" Offset="1"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock x:Name="TitleText"
+                           Text="Audio Player"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="White"/>
+                <TextBlock x:Name="PathText"
+                           Text=""
+                           FontSize="12"
+                           Opacity="0.8"
+                           Foreground="White"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ExportButton"
+                        Content="Export"
+                        MinWidth="90"
+                        Foreground="White"
+                        Background="#8E24AA"
+                        BorderBrush="Transparent"
+                        CornerRadius="6"
+                        Click="Export_Click"/>
+                <Button Content="Close"
+                        MinWidth="90"
+                        Foreground="White"
+                        Background="#AB47BC"
+                        BorderBrush="Transparent"
+                        CornerRadius="6"
+                        Click="Close_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Track list + Player -->
+        <Grid Grid.Row="1" Padding="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Track list (for sound banks) -->
+            <Border Grid.Row="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="12"
+                    Padding="12"
+                    Visibility="Collapsed"
+                    x:Name="TrackListBorder">
+                <ListView x:Name="TrackListView"
+                          SelectionMode="Single"
+                          SelectionChanged="TrackListView_SelectionChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="4,8" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE8D6;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Format}" VerticalAlignment="Center" Opacity="0.6" FontSize="12"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+
+            <!-- Single track info (for standalone audio) -->
+            <Border Grid.Row="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="12"
+                    Padding="24"
+                    x:Name="SingleTrackBorder">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                    <FontIcon Glyph="&#xE8D6;" FontSize="48" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="SingleTrackName" Text="" FontSize="16" HorizontalAlignment="Center" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="SingleTrackFormat" Text="" FontSize="12" Opacity="0.6" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Media Player -->
+            <Border Grid.Row="1"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="12"
+                    Padding="16"
+                    Margin="0,12,0,0">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <MediaPlayerElement x:Name="MediaPlayerElement"
+                                        AutoPlay="False"
+                                        HorizontalAlignment="Stretch"
+                                        AreTransportControlsEnabled="False"/>
+
+                    <!-- Custom controls -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="PlayPauseButton"
+                                Grid.Column="0"
+                                Width="40"
+                                Height="40"
+                                Click="PlayPause_Click"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0">
+                            <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE768;" FontSize="20"/>
+                        </Button>
+
+                        <Slider x:Name="ProgressSlider"
+                                Grid.Column="1"
+                                Margin="12,0"
+                                VerticalAlignment="Center"
+                                Minimum="0"
+                                Maximum="100"
+                                Value="0"
+                                PointerPressed="ProgressSlider_PointerPressed"
+                                PointerReleased="ProgressSlider_PointerReleased"/>
+
+                        <TextBlock x:Name="TimeText"
+                                   Grid.Column="2"
+                                   Text="0:00 / 0:00"
+                                   FontSize="12"
+                                   Opacity="0.7"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Grid Grid.Row="2" Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <TextBlock x:Name="StatusText" Text="Ready" FontSize="12" Opacity="0.6"/>
+        </Grid>
+    </Grid>
+</Window>

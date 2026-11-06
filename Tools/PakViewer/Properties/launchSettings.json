@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "PakViewer (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "PakViewer (Unpackaged)": {
+      "commandName": "Project",
+      "workingDirectory": "E:\\Programming\\Projects\\C++\\Modsmanager\\Tools\\PakViewer",
+      "debugEngines": "managed"
+    }
+  }
+}

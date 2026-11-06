@@ -1,0 +1,13 @@
+<Solution>
+    <Project Path="Libs\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj">
+        <BuildType Project="Release" />
+    </Project>
+    <Project Path="Libs\CUE4Parse\CUE4Parse\CUE4Parse.csproj">
+        <BuildType Project="Release" />
+    </Project>
+    <Project Path="PakViewer.csproj">
+        <BuildType Project="Release" />
+        <Platform Project="x64" />
+        <Deploy />
+    </Project>
+</Solution>

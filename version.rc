@@ -1,0 +1,37 @@
+#include <windows.h>
+
+IDI_APP_ICON ICON "assets\\ico.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   0x3fL
+#ifdef _DEBUG
+FILEFLAGS       VS_FF_DEBUG
+#else
+FILEFLAGS       0x0L
+#endif
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"  // English (US), Unicode
+        BEGIN
+            VALUE "CompanyName",      "Universal Manager project"
+            VALUE "FileDescription",  "Universal Mod Manager"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "UniversalManager"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 Universal Manager project."
+            VALUE "LegalTrademarks",  "Unreal Engine is a trademark of Epic Games, Inc."
+            VALUE "OriginalFilename", "UniversalManager.exe"
+            VALUE "ProductName",      "Universal Manager"
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200  // English (US), Unicode
+    END
+END

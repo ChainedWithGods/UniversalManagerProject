@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve" width="512" height="512">
+<defs>
+  <linearGradient id="crimsonAccent" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#42000d"/>
+    <stop offset="0.5" stop-color="#ea3461"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+  <linearGradient id="crimsonMain" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+    <stop offset="0" stop-color="#440001"/>
+    <stop offset="0.45" stop-color="#910202"/>
+    <stop offset="0.6" stop-color="#d73838"/>
+    <stop offset="0.8" stop-color="#c80000"/>
+    <stop offset="1" stop-color="#f23326"/>
+  </linearGradient>
+  <linearGradient id="crimsonMark" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#F23326"/>
+    <stop offset="1" stop-color="#920202"/>
+  </linearGradient>
+</defs>
+<g>
+	<path style="fill:url(#crimsonAccent);" d="M80,160v-40c0-44.773,29.425-82.671,69.991-95.416C140.523,21.61,130.451,20,120,20&#10;&#9;&#9;C64.771,20,20,64.77,20,120v40c0,55.227,44.771,100,100,100c10.451,0,20.523-1.61,29.991-4.584C109.425,242.67,80,204.771,80,160z"/>
+	<path style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" d="&#10;&#9;&#9;M452,100H246.281c-15.835,0-29.467-9.687-36.427-23.91C191.205,37.987,149.05,13.494,102.27,21.525&#10;&#9;&#9;C53.75,29.856,20,74.928,20,124.158v31.681c0,49.231,33.75,94.306,82.272,102.636c46.779,8.031,88.933-16.464,107.581-54.565&#10;&#9;&#9;C216.814,189.687,230.446,180,246.281,180H452c22.092,0,40-17.91,40-40C492,117.908,474.092,100,452,100z"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="252" y1="252" x2="252" y2="332"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="492" y1="252" x2="492" y2="332"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="332" y1="412" x2="332" y2="492"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="252" y1="412" x2="252" y2="492"/>
+	
+		<ellipse transform="matrix(0.7071 -0.7071 0.7071 0.7071 -97.5188 348.5685)" style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" cx="372" cy="292" rx="40" ry="40"/>
+	
+		<ellipse transform="matrix(0.7071 -0.7071 0.7071 0.7071 -187.2244 452)" style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" cx="452" cy="452" rx="40" ry="40"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMark);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="100" y1="140" x2="100" y2="140"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="372" y1="60" x2="372" y2="100"/>
+	
+		<line style="fill:none;stroke:url(#crimsonMain);stroke-width:40;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;" x1="452" y1="60" x2="452" y2="100"/>
+</g>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</svg>
