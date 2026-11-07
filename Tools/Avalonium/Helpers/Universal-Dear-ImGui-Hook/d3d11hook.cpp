@@ -26,6 +26,19 @@ namespace hooks_dx11 {
     static bool                     gTransitionPending = false;
     static bool                     gDetectedNonDx11SwapChain = false;
 
+    static ULONGLONG                gLastRenderTargetFailureLogTick = 0;
+    static ULONGLONG                gLastRenderTargetMissingLogTick = 0;
+    static ULONGLONG                gLastRenderSkippedLogTick = 0;
+
+    static bool ShouldLogRecurringIssue(ULONGLONG& lastTick)
+    {
+        const ULONGLONG now = GetTickCount64();
+        if (now - lastTick < 1000)
+            return false;
+        lastTick = now;
+        return true;
+    }
+
 
 
     static void CreateRenderTarget()
@@ -41,12 +54,14 @@ namespace hooks_dx11 {
             }
             else
             {
-                DebugLog("[d3d11hook] CreateRenderTarget failed: 0x%08X\n", hr);
+                if (ShouldLogRecurringIssue(gLastRenderTargetFailureLogTick))
+                    DebugLog("[d3d11hook] CreateRenderTarget failed: 0x%08X\n", hr);
             }
         }
         else
         {
-            DebugLog("[d3d11hook] CreateRenderTarget failed: swapchain buffer unavailable\n");
+            if (ShouldLogRecurringIssue(gLastRenderTargetFailureLogTick))
+                DebugLog("[d3d11hook] CreateRenderTarget failed: swapchain buffer unavailable\n");
         }
     }
 
@@ -206,7 +221,8 @@ namespace hooks_dx11 {
                 }
                 else
                 {
-                    DebugLog("[d3d11hook] Render target missing unexpectedly; attempting recreation.\n");
+                    if (ShouldLogRecurringIssue(gLastRenderTargetMissingLogTick))
+                        DebugLog("[d3d11hook] Render target missing unexpectedly; attempting recreation.\n");
                     gSwapChain = pSwapChain;
                     if (hasDesc)
                         gOutputWindow = desc.OutputWindow;
@@ -338,7 +354,8 @@ namespace hooks_dx11 {
             }
             else
             {
-                DebugLog("[d3d11hook] Render skipped: device context or render target invalid\n");
+                if (ShouldLogRecurringIssue(gLastRenderSkippedLogTick))
+                    DebugLog("[d3d11hook] Render skipped: device context or render target invalid\n");
             }
         }
 
