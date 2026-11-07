@@ -84,7 +84,6 @@ logs/
 Tools/PakViewer/Libs/
 Tools/Avalonium/Helpers/lua-5.4.6/
 Tools/Avalonium/Helpers/minhook/
-Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/
 Tools/ModConflictDetector/Libs/CUE4Parse/
 Installer/cmake/Installer/lzmasdk/
 Installer/cmake/Uninstaller/lzmasdk/
