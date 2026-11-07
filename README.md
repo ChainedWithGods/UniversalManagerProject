@@ -99,6 +99,54 @@ API documentation and modding guides: [Tools/Avalonium/Docs](Tools/Avalonium/Doc
 - [Runtime API](Tools/Avalonium/Docs/RuntimeAPI/README.md)
 - [Blueprint mods](Tools/Avalonium/Docs/BPMods/AvaloniumBP.md)
 
+## Showcase Credits
+
+Mods used in the showcase screenshots.
+
+<details>
+<summary>Stellar Blade</summary>
+
+- [CNS - Custom Nanosuit System](https://www.nexusmods.com/stellarblade/mods/1496)
+- [Another Split Hairstyle (ONLY CNS)](https://www.nexusmods.com/stellarblade/mods/2841)
+- [Split hairstyle with Buns and Ponytail Modular (ONLY CNS)](https://www.nexusmods.com/stellarblade/mods/1814)
+- [NaiK Weapon Custom (ONLY CNS)](https://www.nexusmods.com/stellarblade/mods/2800)
+- [YoRHafy - Elegant Dress (CNS compatible)](https://www.nexusmods.com/stellarblade/mods/1631)
+- [YoRHafy - Daily Force and Comfort Force (CNS compatible)](https://www.nexusmods.com/stellarblade/mods/1611)
+- [Evelyn Chevalier Outfit and Hairstyle](https://www.nexusmods.com/stellarblade/mods/1674)
+- [NIKKE Marian costume for Stellar Blade V1.1 (CNS compatible)](https://www.nexusmods.com/stellarblade/mods/1901)
+- [eve elegant makeup](https://www.nexusmods.com/stellarblade/mods/379)
+- [Goth Makeup CNS](https://www.nexusmods.com/stellarblade/mods/2095)
+- [Vindictus - Demon Maiden - CNS Compatible](https://www.nexusmods.com/stellarblade/mods/1807)
+- [Ancient Angel (CNS)](https://www.nexusmods.com/stellarblade/mods/2562)
+- [RE4 Remake Ada Wong (CNS)](https://www.nexusmods.com/stellarblade/mods/2732)
+- [Wildfire - Wuwa Lupa Outfit - CNS](https://www.nexusmods.com/stellarblade/mods/1732?tab=files)
+
+</details>
+
+<details>
+<summary>The Killing Antidote</summary>
+
+- [Fox tail](https://www.nexusmods.com/thekillingantidote/mods/121)
+- [XC_cloth volume 2](https://www.nexusmods.com/thekillingantidote/mods/741)
+- [CheerLeader Costume](https://www.nexusmods.com/thekillingantidote/mods/662)
+- [A VERY Dirty Girl](https://www.nexusmods.com/thekillingantidote/mods/170)
+- [Compound Bow 2 (And ARROWS)](https://www.nexusmods.com/thekillingantidote/mods/560)
+- [USP with SkinPacks](https://www.nexusmods.com/thekillingantidote/mods/151)
+- [AR-15](https://www.nexusmods.com/thekillingantidote/mods/612)
+- [Kimber1911](https://www.nexusmods.com/thekillingantidote/mods/623)
+- [SIG 716](https://www.nexusmods.com/thekillingantidote/mods/553)
+- [SIG MCX Raptor](https://www.nexusmods.com/thekillingantidote/mods/724)
+- [TRUE FPS MOD](https://www.nexusmods.com/thekillingantidote/mods/1034)
+- [A Sprint Animation](https://www.nexusmods.com/thekillingantidote/mods/247)
+
+
+
+</details>
+
+## Discord
+
+[![Discord](https://img.shields.io/badge/Discord-5865F2.png?logo=discord&logoColor=white&style=flat-square)](https://discord.com/users/670630744846106657)
+
 ## Requirements
 
 - Windows 10 (1809+) or Windows 11, 64-bit.
