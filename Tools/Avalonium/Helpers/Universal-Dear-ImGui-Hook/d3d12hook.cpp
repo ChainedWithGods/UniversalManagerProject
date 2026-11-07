@@ -44,6 +44,11 @@ namespace d3d12hook {
     static ULONGLONG              gLastRejectedWindowLogTick = 0;
     static ULONGLONG              gLastDx12ActivityTick = 0;
 
+    // report switches to queues we have not seen before.
+    static constexpr UINT         kRecentDirectQueueCapacity = 8;
+    static ID3D12CommandQueue*    gRecentDirectQueues[kRecentDirectQueueCapacity] = {};
+    static UINT                   gRecentDirectQueueCount = 0;
+
     void release();
 
     // Utility to log HRESULTs
@@ -85,6 +90,32 @@ namespace d3d12hook {
         DebugLog("[d3d12hook] Remembered candidate CommandQueue=%p\n", queue);
     }
 
+    static void ResetRecentDirectQueues()
+    {
+        for (UINT i = 0; i < gRecentDirectQueueCount; ++i)
+            gRecentDirectQueues[i] = nullptr;
+        gRecentDirectQueueCount = 0;
+    }
+
+    static bool IsKnownDirectQueue(ID3D12CommandQueue* queue)
+    {
+        for (UINT i = 0; i < gRecentDirectQueueCount; ++i)
+        {
+            if (gRecentDirectQueues[i] == queue)
+                return true;
+        }
+
+        if (gRecentDirectQueueCount == kRecentDirectQueueCapacity)
+        {
+            for (UINT i = 1; i < kRecentDirectQueueCapacity; ++i)
+                gRecentDirectQueues[i - 1] = gRecentDirectQueues[i];
+            --gRecentDirectQueueCount;
+        }
+
+        gRecentDirectQueues[gRecentDirectQueueCount++] = queue;
+        return false;
+    }
+
     static bool AreComObjectsEqual(IUnknown* a, IUnknown* b)
     {
         if (a == b) return true;
@@ -110,7 +141,7 @@ namespace d3d12hook {
         return sameDevice;
     }
 
-    static void ReplaceTrackedCommandQueue(ID3D12CommandQueue* queue, const char* reason)
+    static void ReplaceTrackedCommandQueue(ID3D12CommandQueue* queue, const char* reason, bool announce = true)
     {
         if (!IsDirectCommandQueue(queue) || !IsQueueCompatibleWithTrackedDevice(queue))
             return;
@@ -127,8 +158,8 @@ namespace d3d12hook {
         gCommandQueue = queue;
         gMissingCommandQueueFrames = 0;
 
-        RememberCandidateCommandQueue(queue);
-        DebugLog("[d3d12hook] Updated CommandQueue=%p (%s)\n", gCommandQueue, reason ? reason : "unknown");
+        if (announce)
+            DebugLog("[d3d12hook] Updated CommandQueue=%p (%s)\n", gCommandQueue, reason ? reason : "unknown");
     }
 
     static bool TryPromoteCandidateCommandQueue()
@@ -269,6 +300,7 @@ namespace d3d12hook {
             }
 
             ReleaseCandidateCommandQueue();
+            ResetRecentDirectQueues();
 
             if (gDevice)
             {
@@ -1019,7 +1051,8 @@ namespace d3d12hook {
         ID3D12CommandList* const* ppCommandLists) {
         if (!gShutdown && IsDirectCommandQueue(_this)) {
             NoteDx12Activity();
-            RememberCandidateCommandQueue(_this);
+            if (!gCommandQueue)
+                RememberCandidateCommandQueue(_this);
 
             ID3D12Device* queueDevice = nullptr;
             if (SUCCEEDED(_this->GetDevice(__uuidof(ID3D12Device), (void**)&queueDevice))) {
@@ -1030,6 +1063,7 @@ namespace d3d12hook {
 
                 const bool sameDevice = (queueDevice == gDevice) || AreComObjectsEqual(queueDevice, gDevice);
                 if (sameDevice) {
+                    const bool knownQueue = IsKnownDirectQueue(_this);
                     const bool hadTrackedQueue = (gCommandQueue != nullptr);
                     const bool sameTrackedQueue = (_this == gCommandQueue);
 
@@ -1046,7 +1080,7 @@ namespace d3d12hook {
                         }
                     }
                     else if (!sameTrackedQueue && IsQueueCompatibleWithTrackedDevice(_this)) {
-                        ReplaceTrackedCommandQueue(_this, "ExecuteCommandLists queue switch");
+                        ReplaceTrackedCommandQueue(_this, "ExecuteCommandLists queue switch", !knownQueue);
                     }
                 }
                 else {
