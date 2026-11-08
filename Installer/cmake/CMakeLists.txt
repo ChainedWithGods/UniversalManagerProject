@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(UniversalModManagerInstaller
-    VERSION 1.0.0
+    VERSION 1.1.0
     LANGUAGES C CXX
 )
 
@@ -19,6 +19,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
+
 if(MSVC)
     add_compile_options(/utf-8 /guard:cf /ZH:SHA_256)
     add_link_options(/GUARD:CF /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
@@ -27,6 +28,15 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../build/cmake_out")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/../build/cmake_out")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${CMAKE_SOURCE_DIR}/../build/cmake_out_dbg")
+
+
+include(FetchContent)
+FetchContent_Declare(lzma_sdk_src
+    URL https://github.com/ip7z/7zip/archive/refs/tags/23.01.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(lzma_sdk_src)
+set(LZMA_SDK_DIR "${lzma_sdk_src_SOURCE_DIR}/C" CACHE INTERNAL "LZMA SDK C sources")
 
 add_subdirectory(Installer)
 add_subdirectory(Uninstaller)

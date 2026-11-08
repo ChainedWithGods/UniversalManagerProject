@@ -15,19 +15,10 @@
 #endif
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "installer.manifest"
 
-// staging.7z is embedded as an RCDATA resource by build-installer.ps1 using
-// the Win32 UpdateResource API. This keeps the payload in a normal .rsrc
-// section — structurally identical to what NSIS / Inno Setup / MSI produce,
-// so it is whitelisted by AV engines. (Previously the script appended the
-// payload AFTER the PE with a magic footer; that overlay pattern exactly
-// matches malware droppers / packers and triggered DeepInstinct's ML
-// heuristic. IDR_PAYLOAD is added at link time by the build script, not
-// declared here.)
-
 // Version Information
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION 1,1,0,0
+ PRODUCTVERSION 1,1,0,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS 0x40004L
@@ -40,12 +31,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "Universal Mod Manager"
             VALUE "FileDescription",  "Universal Mod Manager Setup"
-            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "FileVersion",      "1.1.0.0"
             VALUE "InternalName",     "UniversalModManager-Setup"
             VALUE "LegalCopyright",   "Copyright (C) 2026"
             VALUE "OriginalFilename", "UniversalModManager-Setup.exe"
             VALUE "ProductName",      "Universal Mod Manager"
-            VALUE "ProductVersion",   "1.0.0.0"
+            VALUE "ProductVersion",   "1.1.0.0"
         END
     END
     BLOCK "VarFileInfo"
