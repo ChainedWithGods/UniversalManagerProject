@@ -190,6 +190,8 @@ Avalonium works across **Unreal Engine 4.23 through 5.8**.
 - Reaches Blueprint and script-based game functions in newer builds, including cases where the game hides them from a simple scan.
 - Refuses unsupported engine versions and keeps a feature off instead of guessing when it cannot confirm something.
 
+Full discovery reference: [Discovery API](../Tools/Avalonium/Docs/DiscoveryAPI/README.md).
+
 ### **In-Game Menu**
 
 The menu opens with **Insert** or **F5**, or with a mod-defined key.
@@ -200,6 +202,8 @@ The menu opens with **Insert** or **F5**, or with a mod-defined key.
 - **Universal Search**: find objects, functions, properties, values or addresses across levels, actors, objects, class defaults or a selected hierarchy.
 - The overlay also shows mod toasts, stats panels, simple drawings and custom mod windows.
 
+Full overlay reference: [Overlay API](../Tools/Avalonium/Docs/OverlayAPI/README.md).
+
 ### **Developer Console**
 
 - Enables the game's developer console in builds that normally leave it unused.
@@ -208,6 +212,24 @@ The menu opens with **Insert** or **F5**, or with a mod-defined key.
 - Keeps the console usable after level changes.
 - Protects level transitions when a console command temporarily detaches the player's controller.
 - Can write optional reports for declared commands, spawnable classes, console variables, help text and loaded modules.
+
+Full console reference: [Console API](../Tools/Avalonium/Docs/ConsoleAPI/README.md).
+
+### **Reverse Engineering**
+
+Avalonium reads the running game through its own reflection data, with no symbols and no per-game offsets, and exposes it to in-game tools and external processes.
+
+- Walk the live object array: objects, classes, enums, structs, inheritance chains, property layouts with offsets and flags, functions and vtables.
+- Read and write properties by typed path, keep watches on values, and subscribe to game events, object creation, object destruction and level transitions.
+- Call game functions with real arguments from Lua, native C++ and the overlay Live Editor.
+- Read and write process memory: hex dumps, pointer traversal, integer writes and value scans.
+- Search the main executable, loaded modules, the heap or a chosen address range for byte patterns, strings, pointers and cross-references.
+- Report loaded modules, memory regions and engine counters, and export the full class table through shared memory.
+- Dump every UFUNCTION(Exec) declaration grouped by declaring class, and flag commands whose native body is compiled out of the shipping build.
+- Separate declarations from implementations: reflection proves a function exists, and the exec inventory decodes its native thunk to tell whether this build implements it.
+- Drive everything from an external tool over a local loopback API that accepts text commands and JSON sessions, or in process through exported C functions.
+
+Full command reference: [Runtime API](../Tools/Avalonium/Docs/RuntimeAPI/README.md).
 
 ### **Mods**
 
@@ -247,6 +269,8 @@ Avalonium supports three mod types in the same mod folder.
 - **Generic Functions** provides shared events for Blueprint mods.
 - **UE Helpers** provides common game and world helpers for Lua mods.
 
+Full modding reference: [Lua API](../Tools/Avalonium/Docs/LuaAPI/README.md), [C++ API](../Tools/Avalonium/Docs/CppAPI/README.md), [Blueprint mods](../Tools/Avalonium/Docs/BPMods/AvaloniumBP.md).
+
 ### **Crypto & Asset Discovery**
 
 Avalonium finds and verifies AES encryption keys automatically.
@@ -283,6 +307,8 @@ Avalonium finds and verifies AES encryption keys automatically.
 - *UE 5.6 title*: key found in **2040 ms** (1,757 candidates), 6,021 entries decoded
 - *UE 4.26 (UTOC v2), UE 5.4 (UTOC v6) and UE 5.2 (UTOC v5) titles*: detected as unencrypted, key search skipped (**0 ms**), inventory reported
 
+Full crypto reference: [Crypto API](../Tools/Avalonium/Docs/CryptoAPI/README.md).
+
 ### **Creator Tools**
 
 These tools are for mod authors, asset creators and people building their own tools.
@@ -294,6 +320,8 @@ These tools are for mod authors, asset creators and people building their own to
 - Generate ready-to-open project files for the created SDK.
 - Compare two generated SDKs and export the changes.
 
+Full creator reference: [SDK API](../Tools/Avalonium/Docs/SdkAPI/README.md), [USMAP format](../Tools/Avalonium/Docs/UsmapAPI/README.md).
+
 ### **Configuration**
 
 Settings live in a config file next to the runtime. Universal Manager edits it for you from the Avalonium tab, so you rarely touch the file itself.
@@ -303,6 +331,8 @@ Settings live in a config file next to the runtime. Universal Manager edits it f
 - Set a startup delay for games that finish loading slowly.
 - Point Lua and native mods at a custom folder, or leave them empty to use the local `Mods/Avalonium` folder.
 - Set logging level and output folders for generated files.
+
+Full configuration reference: [Runtime API configuration](../Tools/Avalonium/Docs/RuntimeAPI/CONFIG.md).
 
 ### **Logging And Troubleshooting**
 
@@ -321,6 +351,8 @@ Settings live in a config file next to the runtime. Universal Manager edits it f
 - Mods reuse existing game textures, fonts and styles, but cannot create new game assets or new widget classes.
 - Avalonium does not modify the game's existing files. It loads beside the game and writes its own logs, reports, dumps and mod folders.
 - The tool connection is local to the PC and has no network authentication.
+
+Known limits: [Limitations](../Tools/Avalonium/Docs/LIMITATIONS.md).
 
 ### **The Avalonium Tab Inside Universal Manager**
 
