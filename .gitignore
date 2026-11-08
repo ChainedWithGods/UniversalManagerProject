@@ -87,3 +87,12 @@ Tools/Avalonium/Helpers/minhook/
 Tools/ModConflictDetector/Libs/CUE4Parse/
 Installer/cmake/Installer/lzmasdk/
 Installer/cmake/Uninstaller/lzmasdk/
+
+# ===== Universal-Dear-ImGui-Hook Configuration =====
+# Track the main hook source code...
+Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/
+
+# ...except for these specific:
+Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/imgui/
+Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/vk_video/
+Tools/Avalonium/Helpers/Universal-Dear-ImGui-Hook/vulkan/
