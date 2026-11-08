@@ -128,6 +128,13 @@ void ModManager::openAppDataFolder() {
     }
 }
 
+void ModManager::openFolderPath(const QString& path) {
+    const QString target = path.trimmed();
+    if (target.isEmpty())
+        return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(target));
+}
+
 QString ModManager::getShortcut(const QString& key, const QString& fallback) const
 {
     const QString trimmedKey = key.trimmed();
