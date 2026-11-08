@@ -35,6 +35,8 @@ if(WIN32 AND NOT SHOW_CONSOLE)
     qt_add_executable(UniversalManager WIN32
         src/App/main.cpp
         src/App/resourcepaths.h
+        src/App/UpdateChecker.cpp
+        src/App/UpdateChecker.h
 
         src/Core/modmanager.cpp
         src/Core/modmanager.h
@@ -95,6 +97,8 @@ else()
     qt_add_executable(UniversalManager
         src/App/main.cpp
         src/App/resourcepaths.h
+        src/App/UpdateChecker.cpp
+        src/App/UpdateChecker.h
 
         src/Core/modmanager.cpp
         src/Core/modmanager.h
@@ -153,7 +157,6 @@ else()
     )
 endif()
 
-
 target_include_directories(UniversalManager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/App
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Core
@@ -207,11 +210,9 @@ if(WIN32)
     )
 endif()
 
-
 if(DEFINED QT_KNOWN_POLICY_QTP0004)
     qt_policy(SET QTP0004 NEW)
 endif()
-
 
 qt_add_qml_module(UniversalManager
     URI UniversalModManager
@@ -222,6 +223,8 @@ qt_add_qml_module(UniversalManager
         qml/main.qml
         qml/Shared/SplashScreen.qml
         qml/Shared/DownloadsPathRequiredDialog.qml
+        qml/Shared/AppUpdateDialog.qml
+        qml/Shared/LuaProfilesRestoredDialog.qml
         qml/Shared/ModWindowRestoreChip.qml
         qml/HomePage/HomePage.qml
         qml/HomePage/HomePageTips.qml
@@ -664,7 +667,7 @@ target_link_libraries(UniversalManager PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(UniversalManager PRIVATE Crypt32 windowscodecs shlwapi ole32)
+    target_link_libraries(UniversalManager PRIVATE Crypt32 windowscodecs shlwapi ole32 version)
 endif()
 
 add_custom_command(TARGET UniversalManager POST_BUILD
