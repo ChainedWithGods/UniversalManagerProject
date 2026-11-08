@@ -1,5 +1,8 @@
 #include "ConsoleInternal.h"
 #include "ConsoleVariables.h"
+#include "../../Helpers/minhook/src/hde/hde64.h"
+#include <cstdint>
+#include <set>
 #include <thread>
 
 namespace ConsoleEnabler {
@@ -237,6 +240,87 @@ static std::string ExecSignature(const EngineState &state, UStruct *function,
   return signature;
 }
 
+struct ExecBodyCalls {
+  std::vector<uint64_t> direct;
+  std::vector<uint64_t> indirect;
+  bool indirectJmp = false;
+  bool decoded = false;
+};
+
+static ExecBodyCalls DecodeExecBody(uint64_t fn) {
+  ExecBodyCalls out;
+  if (!fn) return out;
+
+  uint8_t buf[0x900];
+  if (!SafeMem_Read((void *)(uintptr_t)fn, buf, sizeof(buf))) return out;
+  out.decoded = true;
+
+  size_t off = 0;
+  for (int i = 0; i < 2000 && off < sizeof(buf); ++i) {
+    hde64s hs = {};
+    const unsigned len = hde64_disasm(buf + off, &hs);
+    if (!len || (hs.flags & F_ERROR)) break;
+    if (hs.opcode == 0xC3 || hs.opcode == 0xCC) break;
+
+    const uint64_t addr = fn + off;
+    if (hs.opcode == 0xE8 && (hs.flags & F_IMM32)) {
+      const int32_t rel = (int32_t)hs.imm.imm32;
+      out.direct.push_back((uint64_t)((int64_t)(addr + len) + rel));
+    } else if (hs.opcode == 0xFF && hs.modrm_reg == 2) {
+      if (hs.modrm_mod == 3) {
+        out.indirect.push_back((uint64_t)(hs.modrm_rm | (hs.rex_b ? 8 : 0)) + 1);
+      } else {
+        uint32_t disp = 0;
+        if (hs.flags & F_DISP32) disp = hs.disp.disp32;
+        else if (hs.flags & F_DISP8) disp = hs.disp.disp8;
+        out.indirect.push_back(0x100000000ULL + disp);
+      }
+    } else if (hs.opcode == 0xFF && hs.modrm_reg == 4) {
+      out.indirectJmp = true;
+    }
+    off += len;
+  }
+  return out;
+}
+
+static void ComputeExecStubs(const ExecDumpContext &ctx, std::set<std::string> &stubKeys) {
+  if (ctx.nativeByCommand.empty()) return;
+
+  std::map<uint64_t, int> freq;
+  for (const auto &entry : ctx.nativeByCommand)
+    if (entry.second) freq[(uint64_t)(uintptr_t)entry.second]++;
+
+  std::map<uint64_t, ExecBodyCalls> bodies;
+  for (const auto &entry : ctx.nativeByCommand) {
+    const uint64_t fn = (uint64_t)(uintptr_t)entry.second;
+    if (fn && !bodies.count(fn)) bodies[fn] = DecodeExecBody(fn);
+  }
+
+  std::set<uint64_t> machineryDirect;
+  std::set<uint64_t> machineryIndirect;
+  for (const auto &kv : bodies)
+    if (freq[kv.first] >= 2) {
+      for (uint64_t target : kv.second.direct) machineryDirect.insert(target);
+      for (uint64_t target : kv.second.indirect) machineryIndirect.insert(target);
+    }
+
+  for (const auto &entry : ctx.nativeByCommand) {
+    const uint64_t fn = (uint64_t)(uintptr_t)entry.second;
+    if (!fn) continue;
+    const auto it = bodies.find(fn);
+    if (it == bodies.end() || !it->second.decoded) continue;
+
+    bool stub = !it->second.indirectJmp;
+    if (stub)
+      for (uint64_t target : it->second.direct)
+        if (!machineryDirect.count(target)) { stub = false; break; }
+    if (stub)
+      for (uint64_t target : it->second.indirect)
+        if (!machineryIndirect.count(target)) { stub = false; break; }
+    if (stub) stubKeys.insert(entry.first);
+  }
+}
+
 static bool OnProcessExecObject(UObject *obj, int32_t index, void *userdata) {
   ExecDumpContext *ctx = (ExecDumpContext *)userdata;
   const EngineState &state = *(ctx->state);
@@ -262,6 +346,8 @@ static bool OnProcessExecObject(UObject *obj, int32_t index, void *userdata) {
   if (!flagsText.empty()) signature += "  [" + flagsText + "]";
 
   ctx->classToCommands[className].push_back(signature);
+  ctx->nativeByCommand.emplace_back(className + "\x01" + signature,
+                                    ReadPointerField(obj, state.UFunction_FuncOff));
   ctx->totalCount++;
 
   if (IsClassObject(state, outer)) {
@@ -356,6 +442,9 @@ void DumpExecCommands(const EngineState &state) {
 
   EngineDiscovery::ForEachObject(state, OnProcessExecObject, &ctx);
 
+  std::set<std::string> stubKeys;
+  ComputeExecStubs(ctx, stubKeys);
+
   char consoleDir[512] = {0};
   GetConsoleDumpDirectory(state, consoleDir, sizeof(consoleDir));
 
@@ -379,8 +468,9 @@ void DumpExecCommands(const EngineState &state) {
     fprintf(fp, "Game: %s\n", state.GameName);
     if (state.UEMajor > 0)
       fprintf(fp, "Engine: %d.%d\n", state.UEMajor, state.UEMinor);
-    fprintf(fp, "Exec functions: %d in %d classes\n\n", ctx.totalCount,
+    fprintf(fp, "Exec functions: %d in %d classes\n", ctx.totalCount,
             (int)ctx.classToCommands.size());
+    fprintf(fp, "Stripped bodies ([Stub]): %d\n\n", (int)stubKeys.size());
     fprintf(fp,
             "Exec functions are UFUNCTION(Exec) declarations recovered from reflection,\n"
             "grouped by the class that declares them. Type the command name in the console;\n"
@@ -388,7 +478,11 @@ void DumpExecCommands(const EngineState &state) {
             "objects around the local player (player input, controller, pawn, HUD, cheat\n"
             "manager, game mode, game state, camera manager, game instance, viewport) and\n"
             "the engine's global exec handlers, so a command runs while its declaring\n"
-            "object is part of that path.\n\n");
+            "object is part of that path.\n"
+            "[Stub] marks a command whose native body was compiled out of this build: the\n"
+            "generated thunk still parses arguments, so the command resolves, but it calls\n"
+            "Shipping builds commonly strip cheat and\n"
+            "debug bodies this way while keeping the declarations in reflection.\n\n");
 
     for (auto &pair : ctx.classToCommands) {
       std::sort(pair.second.begin(), pair.second.end());
@@ -403,7 +497,8 @@ void DumpExecCommands(const EngineState &state) {
                 (int)pair.second.size());
       }
       for (const std::string &command : pair.second) {
-        fprintf(fp, "  - %s\n", command.c_str());
+        const bool stub = stubKeys.count(pair.first + "\x01" + command) != 0;
+        fprintf(fp, "  - %s%s\n", command.c_str(), stub ? "  [Stub]" : "");
       }
       fprintf(fp, "\n");
     }
