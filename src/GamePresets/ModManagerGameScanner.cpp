@@ -1633,6 +1633,7 @@ void ModManager::addGamesToPresets(const QVariantList& games, const QString& fol
             const QString luaError = m_luaProfileManager->createProfileFolder(newPresetId, newPresetName);
             if (!luaError.isEmpty()) {
                 qWarning() << "[LuaProfiles] failed to create folder for preset" << newPresetName << ":" << luaError;
+                emit luaProfileCreateFailed(newPresetName, luaError);
             }
             luaFolderPath = m_luaProfileManager->profileFolderPath(newPresetId, newPresetName);
         }
