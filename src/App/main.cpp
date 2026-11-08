@@ -47,6 +47,7 @@
 #include "NotificationManager.h"
 #include "AnimatedImageStore.h"
 #include "DownloadManager.h"
+#include "UpdateChecker.h"
 #include "resourcepaths.h"
 
 namespace {
@@ -365,6 +366,7 @@ int main(int argc, char* argv[])
     auto modManager = new ModManager(&app);
     auto downloadManager = new DownloadManager(&app);
     auto notificationManager = new NotificationManager(&app);
+    auto updateChecker = new UpdateChecker(&app);
     modManager->setDownloadManager(downloadManager);
     auto titleBarController = new WindowsTitleBarController(&engine, modManager, &app);
     auto aggressiveRam = new AggressiveRam(&app, modManager);
@@ -380,6 +382,7 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty("animatedImageStore", animatedImageStore);
     engine.rootContext()->setContextProperty("downloadManager", downloadManager);
     engine.rootContext()->setContextProperty("notificationManager", notificationManager);
+    engine.rootContext()->setContextProperty("updateChecker", updateChecker);
     engine.rootContext()->setContextProperty("trayHelper", &trayHelper);
     engine.rootContext()->setContextProperty("titleBarController", titleBarController);
 
@@ -476,6 +479,22 @@ int main(int argc, char* argv[])
                                                   QThread::msleep(static_cast<unsigned long>(targetMs - elapsed));
                                               limiterTimer->restart();
                                           }, Qt::DirectConnection);
+                     }, Qt::QueuedConnection);
+
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
+                     [updateChecker](QObject* obj, const QUrl& objUrl) {
+                         if (!obj || objUrl != QUrl(ResourcePaths::mainQml))
+                             return;
+                         QTimer::singleShot(1500, updateChecker, &UpdateChecker::checkForUpdates);
+                     }, Qt::QueuedConnection);
+
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
+                     [modManager](QObject* obj, const QUrl& objUrl) {
+                         if (!obj || objUrl != QUrl(ResourcePaths::mainQml))
+                             return;
+                         QTimer::singleShot(1200, modManager, [modManager]() {
+                             modManager->ensureLuaProfileFolders();
+                         });
                      }, Qt::QueuedConnection);
     engine.load(url);
 
