@@ -67,6 +67,64 @@ bool SetConsoleTargetPlayer(const EngineState &state, UObject *consoleObject) {
   return true;
 }
 
+UClass *FindUniqueCheatManagerSubclass(const EngineState &state, UClass *baseClass) {
+  if (!baseClass) return nullptr;
+
+  UClass *match = nullptr;
+  const int32_t count = EngineDiscovery::GetObjectCount(state);
+  for (int32_t i = 0; i < count; ++i) {
+    UObject *object = EngineDiscovery::GetObjectByIndex(state, i);
+    if (!object || !IsClassObject(state, object)) continue;
+    UClass *candidate = (UClass *)object;
+    if (candidate == baseClass) continue;
+    if (!EngineDiscovery::IsStructA(state, (UStruct *)candidate, (UStruct *)baseClass)) continue;
+    if (state.UClass_ClassFlagsOff >= 0) {
+      uint32_t classFlags = 0;
+      if (SafeMem_Read((uint8_t *)candidate + state.UClass_ClassFlagsOff, &classFlags, 4) &&
+          (classFlags & 0x1u) != 0) {
+        continue;
+      }
+    }
+    if (match) {
+      EngineDiscovery::WriteLogLine(
+          "[ConsoleEnabler] Several CheatManager subclasses are loaded; keeping the base class.");
+      return nullptr;
+    }
+    match = candidate;
+  }
+
+  if (match) {
+    char buffer[512] = {};
+    snprintf(buffer, sizeof(buffer), "[ConsoleEnabler] Found CheatManager subclass: %s",
+             EngineDiscovery::BuildFullName(state, (UObject *)match).c_str());
+    EngineDiscovery::WriteLogLine(buffer);
+  }
+  return match;
+}
+
+UClass *ResolveCheatManagerClass(const EngineState &state, UObject *playerController) {
+  UClass *baseClass = FindClassByNameExact(state, "CheatManager");
+
+  UClass *pcClass = EngineDiscovery::GetObjectClass(state, playerController);
+  if (pcClass) {
+    const int32_t cheatClassOffset = FindPropertyOffset(state, (UStruct *)pcClass, "CheatClass");
+    if (cheatClassOffset >= 0) {
+      void *declaredClass = *(void **)((uint8_t *)playerController + cheatClassOffset);
+      if (declaredClass && declaredClass != (void *)baseClass && IsClassObject(state, (UObject *)declaredClass)) {
+        char buffer[512] = {};
+        snprintf(buffer, sizeof(buffer), "[ConsoleEnabler] PlayerController CheatClass: %s",
+                 EngineDiscovery::BuildFullName(state, (UObject *)declaredClass).c_str());
+        EngineDiscovery::WriteLogLine(buffer);
+        return (UClass *)declaredClass;
+      }
+    }
+  }
+
+  UClass *subclass = FindUniqueCheatManagerSubclass(state, baseClass);
+  if (subclass) return subclass;
+  return baseClass;
+}
+
 void AttachCheatManager(const EngineState &state) {
   UObject *playerController = FindPlayerController(state);
   if (!playerController) {
@@ -97,7 +155,7 @@ void AttachCheatManager(const EngineState &state) {
     return;
   }
 
-  UClass *cheatManagerClass = FindClassByNameExact(state, "CheatManager");
+  UClass *cheatManagerClass = ResolveCheatManagerClass(state, playerController);
   if (!cheatManagerClass) {
     EngineDiscovery::WriteLogLine("[ConsoleEnabler] CheatManager class not found.");
     return;
@@ -105,25 +163,27 @@ void AttachCheatManager(const EngineState &state) {
 
   UObject *createdCheatManager = nullptr;
 
-  const ConstructHelperInfo constructHelper = FindConstructHelper(state);
-  if (constructHelper.Function && constructHelper.OwnerClass) {
-    UObject *helperCDO = FindFirstObjectOfClass(state, constructHelper.OwnerClass, true);
-    if (helperCDO) {
-      FSpawnObjectParams params = {};
-      params.ObjectClass = cheatManagerClass;
-      params.Outer = playerController;
-
-      if (EngineDiscovery::CallProcessEvent(state, helperCDO, constructHelper.Function, &params) && params.ReturnValue) {
-        createdCheatManager = params.ReturnValue;
-        EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned CheatManager via construct helper.");
-      }
-    }
-  }
-
-  if (!createdCheatManager && state.StaticConstructObject) {
+  if (state.StaticConstructObject) {
     createdCheatManager = TrySEHConstruct(state, cheatManagerClass, playerController);
     if (createdCheatManager) {
       EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned CheatManager via Direct Native Instantiation.");
+    }
+  }
+
+  if (!createdCheatManager) {
+    const ConstructHelperInfo constructHelper = FindConstructHelper(state);
+    if (constructHelper.Function && constructHelper.OwnerClass) {
+      UObject *helperCDO = FindFirstObjectOfClass(state, constructHelper.OwnerClass, true);
+      if (helperCDO) {
+        FSpawnObjectParams params = {};
+        params.ObjectClass = cheatManagerClass;
+        params.Outer = playerController;
+
+        if (EngineDiscovery::CallProcessEvent(state, helperCDO, constructHelper.Function, &params) && params.ReturnValue) {
+          createdCheatManager = params.ReturnValue;
+          EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned CheatManager via construct helper.");
+        }
+      }
     }
   }
 
@@ -206,6 +266,12 @@ void LogConsoleKeySlots(const EngineState &state, const TArray<FKeyEntry> &keyAr
 }
 
 UObject *SpawnInputSettingsInstance(const EngineState &state, UClass *inputSettingsClass, UObject *outer) {
+  if (state.StaticConstructObject) {
+    if (UObject *created = TrySEHConstruct(state, inputSettingsClass, outer, {}, kRfTransient)) {
+      return created;
+    }
+  }
+
   const ConstructHelperInfo constructHelper = FindConstructHelper(state);
   if (constructHelper.Function && constructHelper.OwnerClass) {
     UObject *helperCDO = FindFirstObjectOfClass(state, constructHelper.OwnerClass, true);
@@ -219,9 +285,6 @@ UObject *SpawnInputSettingsInstance(const EngineState &state, UClass *inputSetti
     }
   }
 
-  if (state.StaticConstructObject) {
-    return TrySEHConstruct(state, inputSettingsClass, outer, {}, kRfTransient);
-  }
   return nullptr;
 }
 
@@ -643,46 +706,44 @@ bool EnableInGameConsole(const EngineState &state) {
 
   UObject *createdConsole = existingConsole;
   if (!createdConsole) {
-    const ConstructHelperInfo constructHelper = FindConstructHelper(state);
-    if (constructHelper.Function && constructHelper.OwnerClass) {
-      char buffer[512] = {};
-      snprintf(buffer, sizeof(buffer), "[ConsoleEnabler] Using construct helper: %s on %s",
-               constructHelper.Name,
-               EngineDiscovery::BuildFullName(state, (UObject *)constructHelper.OwnerClass).c_str());
-      EngineDiscovery::WriteLogLine(buffer);
-
-      UObject *helperCDO = FindFirstObjectOfClass(state, constructHelper.OwnerClass, true);
-      if (helperCDO) {
-        FSpawnObjectParams params = {};
-        params.ObjectClass = consoleClass;
-        params.Outer = gameViewport;
-
-        if (EngineDiscovery::CallProcessEvent(state, helperCDO, constructHelper.Function, &params) && params.ReturnValue) {
-          createdConsole = params.ReturnValue;
-          EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned Console via construct helper.");
-        } else {
-          if (state.UEMajor >= 5 && state.UEMinor >= 8) {
-            EngineDiscovery::WriteLogLine("[Intelligence] UE5.8+ detected: Construct helper restricted Outer; escalating to Direct Native Instantiation.");
-          } else {
-            EngineDiscovery::WriteLogLine("[Intelligence] Construct helper unfulfilled for Viewport Outer; escalating to Direct Native Instantiation.");
-          }
-        }
-      } else {
-        EngineDiscovery::WriteLogLine("[ConsoleEnabler] Failed to find helper class default object.");
-      }
-    }
-
-    if (!createdConsole) {
-      createdConsole = FindExistingConsoleObject(state, consoleClass, gameViewport);
-      if (createdConsole) {
-        EngineDiscovery::WriteLogLine("[ConsoleEnabler] Reusing existing console instance owned by viewport.");
-      }
+    createdConsole = FindExistingConsoleObject(state, consoleClass, gameViewport);
+    if (createdConsole) {
+      EngineDiscovery::WriteLogLine("[ConsoleEnabler] Reusing existing console instance owned by viewport.");
     }
 
     if (!createdConsole && state.StaticConstructObject) {
       createdConsole = TrySEHConstruct(state, consoleClass, gameViewport);
       if (createdConsole) {
         EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned Console via Direct Native Instantiation (StaticConstructObject).");
+      }
+    }
+
+    if (!createdConsole) {
+      const ConstructHelperInfo constructHelper = FindConstructHelper(state);
+      if (constructHelper.Function && constructHelper.OwnerClass) {
+        char buffer[512] = {};
+        snprintf(buffer, sizeof(buffer), "[ConsoleEnabler] Using construct helper: %s on %s",
+                 constructHelper.Name,
+                 EngineDiscovery::BuildFullName(state, (UObject *)constructHelper.OwnerClass).c_str());
+        EngineDiscovery::WriteLogLine(buffer);
+
+        UObject *helperCDO = FindFirstObjectOfClass(state, constructHelper.OwnerClass, true);
+        if (helperCDO) {
+          FSpawnObjectParams params = {};
+          params.ObjectClass = consoleClass;
+          params.Outer = gameViewport;
+
+          if (EngineDiscovery::CallProcessEvent(state, helperCDO, constructHelper.Function, &params) && params.ReturnValue) {
+            createdConsole = params.ReturnValue;
+            EngineDiscovery::WriteLogLine("[ConsoleEnabler] Successfully spawned Console via construct helper.");
+          } else if (state.UEMajor >= 5 && state.UEMinor >= 8) {
+            EngineDiscovery::WriteLogLine("[Intelligence] UE5.8+ detected: Construct helper restricted Outer.");
+          } else {
+            EngineDiscovery::WriteLogLine("[Intelligence] Construct helper unfulfilled for Viewport Outer.");
+          }
+        } else {
+          EngineDiscovery::WriteLogLine("[ConsoleEnabler] Failed to find helper class default object.");
+        }
       }
     }
   }
