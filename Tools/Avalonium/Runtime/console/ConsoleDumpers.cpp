@@ -651,6 +651,10 @@ void UnlockConsoleCommands(const EngineState &state) {
     return;
   }
 
+  static bool completed = false;
+  if (completed) return;
+  completed = true;
+
   SafeMem_SetFastMode(1);
 
   int32_t tmapOff = state.IConsoleManager_TMapOff > 0 ? state.IConsoleManager_TMapOff : 0x08;
