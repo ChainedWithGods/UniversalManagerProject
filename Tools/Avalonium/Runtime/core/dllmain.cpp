@@ -42,7 +42,9 @@ static DWORD WINAPI InputAndConsoleThread(LPVOID ) {
     bool hookDone     = !cfg.EnableWndProcHook || (g_State.OriginalWndProc != nullptr);
     bool consoleDone  = !cfg.EnableUnrealConsole || g_ConsoleDone;
 
-    for (int attempt = 1; attempt <= 200; ++attempt) {
+    constexpr int kMaxConsoleAttempts = 1800;
+
+    for (int attempt = 1; attempt <= kMaxConsoleAttempts; ++attempt) {
         if (!g_State.bInitialized) {
             Sleep(50);
             continue;
@@ -73,9 +75,9 @@ static DWORD WINAPI InputAndConsoleThread(LPVOID ) {
                     consoleDone = true;
                     g_ConsoleDone = true;
                     EngineDiscovery::EndLogSection("console");
-                } else if (attempt == 1 || (attempt % 20) == 0) {
+                } else if (attempt == 1 || (attempt % 100) == 0) {
                     char msg[160] = {};
-                    snprintf(msg, sizeof(msg), "[Avalonium] Console not ready yet, retrying (attempt %d/200)\n", attempt);
+                    snprintf(msg, sizeof(msg), "[Avalonium] Console not ready yet, retrying (attempt %d/%d)\n", attempt, kMaxConsoleAttempts);
                     LogMsg(msg);
                 }
             } else {
