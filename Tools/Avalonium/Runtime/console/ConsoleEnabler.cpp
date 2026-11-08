@@ -635,7 +635,6 @@ bool ShouldReleaseMouseCaptureForState(const EngineState &state) {
 
 bool EnableInGameConsole(const EngineState &state) {
   if (!state.bInitialized) {
-    EngineDiscovery::WriteLogLine("[ConsoleEnabler] Engine not fully initialized.");
     return false;
   }
 
@@ -644,7 +643,7 @@ bool EnableInGameConsole(const EngineState &state) {
     return false;
   }
 
-  UObject *engineObject = FindLiveEngineObject(state, true);
+  UObject *engineObject = FindLiveEngineObject(state, false);
   if (!engineObject) {
     return false;
   }
@@ -654,15 +653,6 @@ bool EnableInGameConsole(const EngineState &state) {
     return false;
   }
 
-  EngineDiscovery::BeginExclusiveLogSection("console");
-
-  static bool travelGuardInstalled = false;
-  if (!travelGuardInstalled) {
-    travelGuardInstalled = SeamlessTravelGuard::Install(g_State);
-  }
-
-  UnlockConsoleCommands(state);
-
   UClass *engineClass = EngineDiscovery::GetObjectClass(state, engineObject);
   UClass *consoleClass = nullptr;
   if (engineClass) {
@@ -671,21 +661,38 @@ bool EnableInGameConsole(const EngineState &state) {
       consoleClass = (UClass *)SafeMem_ReadPtr((uint8_t *)engineObject + consoleClassOffset);
     }
   }
-
   if (!consoleClass) {
     consoleClass = FindClassByNameExact(state, "Console");
   }
-  if (!consoleClass) {
-    EngineDiscovery::WriteLogLine("[ConsoleEnabler] Failed to resolve Console class.");
-    EngineDiscovery::EndLogSection("console");
+  const int32_t viewportConsoleOffset =
+      consoleClass ? FindViewportConsoleOffset(state, gameViewport) : -1;
+  if (!consoleClass || viewportConsoleOffset < 0) {
     return false;
   }
 
-  const int32_t viewportConsoleOffset = FindViewportConsoleOffset(state, gameViewport);
-  if (viewportConsoleOffset < 0) {
-    EngineDiscovery::EndLogSection("console");
+  static DWORD lastFullAttemptTick = 0;
+  const DWORD nowTick = GetTickCount();
+  if (lastFullAttemptTick != 0 && nowTick - lastFullAttemptTick < 1000) {
     return false;
   }
+  lastFullAttemptTick = nowTick;
+
+  static bool announced = false;
+  EngineDiscovery::BeginExclusiveLogSection("console");
+  if (!announced) {
+    announced = true;
+    char buffer[512] = {};
+    snprintf(buffer, sizeof(buffer), "[ConsoleEnabler] Using engine object: %s",
+             EngineDiscovery::BuildFullName(state, engineObject).c_str());
+    EngineDiscovery::WriteLogLine(buffer);
+  }
+
+  static bool travelGuardInstalled = false;
+  if (!travelGuardInstalled) {
+    travelGuardInstalled = SeamlessTravelGuard::Install(g_State);
+  }
+
+  UnlockConsoleCommands(state);
 
   UObject *existingConsole = (UObject *)SafeMem_ReadPtr((uint8_t *)gameViewport + viewportConsoleOffset);
   if (existingConsole && !IsUsableConsoleObject(state, existingConsole, consoleClass)) {
