@@ -1,5 +1,7 @@
 #include "ModManagerInternal.h"
 
+#include <QThreadPool>
+
 using namespace mmdetail;
 
 QString ModManager::getPresetsBasePath() const {
@@ -299,7 +301,8 @@ bool ModManager::applyPresetToCurrentState(const QVariantMap& preset) {
         targetLuaModsPath = preset.value(QStringLiteral("luaModsPath")).toString().trimmed();
     } else if (!presetId.isEmpty() && m_luaProfileManager) {
         targetLuaModsPath = m_luaProfileManager->profileFolderPath(presetId);
-        if (!targetLuaModsPath.isEmpty() && !QDir(targetLuaModsPath).exists()) {
+
+        if (!targetLuaModsPath.isEmpty() && !QDir(targetLuaModsPath).exists() && !wasLoading) {
             m_luaProfileManager->createProfileFolder(presetId, presetName);
         }
     }
@@ -642,6 +645,8 @@ void ModManager::createPreset(const QString& name) {
     if (m_luaProfileManager) {
         const QString luaError = m_luaProfileManager->createProfileFolder(id, presetName);
         emit luaProfileFolderResult(presetName, luaError);
+        if (!luaError.isEmpty())
+            emit luaProfileCreateFailed(presetName, luaError);
         luaFolderPath = m_luaProfileManager->profileFolderPath(id, presetName);
         m_luaProfileManager->setActiveProfileId(id);
     }
@@ -657,6 +662,80 @@ void ModManager::createPreset(const QString& name) {
     if (!luaFolderPath.isEmpty()) {
         setAvaloniumLuaModsPath(luaFolderPath);
     }
+}
+
+void ModManager::ensureLuaProfileFolders() {
+    if (!m_luaProfileManager) {
+        return;
+    }
+
+    const QString defaultMods = defaultLuaModsDirectory();
+    if (defaultMods.isEmpty()) {
+        return;
+    }
+
+    struct PendingProfile {
+        QString name;
+        QString folderPath;
+    };
+    QList<PendingProfile> pending;
+
+    for (const QVariant& value : m_gamePresets) {
+        const QVariantMap preset = value.toMap();
+        if (preset.value(QStringLiteral("useSharedLuaMods")).toBool()) {
+            continue;
+        }
+
+        const QString id = preset.value(QStringLiteral("id")).toString();
+        const QString name = preset.value(QStringLiteral("name")).toString();
+        if (id.isEmpty() || name.isEmpty()) {
+            continue;
+        }
+
+        const QString folderPath = m_luaProfileManager->profileFolderPath(id, name);
+        if (folderPath.isEmpty() || QDir(folderPath).exists()) {
+            continue;
+        }
+
+        const QString configuredPath = preset.value(QStringLiteral("luaModsPath")).toString().trimmed();
+        if (!configuredPath.isEmpty()
+            && QDir::cleanPath(configuredPath).compare(QDir::cleanPath(folderPath),
+                                                       Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+
+        PendingProfile profile;
+        profile.name = name;
+        profile.folderPath = folderPath;
+        pending.append(profile);
+    }
+
+    if (pending.isEmpty()) {
+        return;
+    }
+
+    QThreadPool::globalInstance()->start([this, pending, defaultMods]() {
+        QVariantList restored;
+        for (const PendingProfile& profile : pending) {
+            if (LuaProfileManager::seedProfileFolderAt(profile.folderPath, defaultMods, nullptr)) {
+                QVariantMap entry;
+                entry.insert(QStringLiteral("name"), profile.name);
+                entry.insert(QStringLiteral("path"), profile.folderPath);
+                restored.append(entry);
+            }
+        }
+
+        if (restored.isEmpty()) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(this, [this, restored]() {
+            if (m_luaProfileManager) {
+                m_luaProfileManager->notifyProfileFoldersChanged();
+            }
+            emit luaProfileFoldersCreated(restored);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void ModManager::deletePreset(const QString& presetId) {
@@ -865,6 +944,7 @@ void ModManager::duplicatePreset(const QString& presetId) {
         const QString luaError = m_luaProfileManager->createProfileFolder(newId, newName);
         if (!luaError.isEmpty()) {
             qWarning() << "[LuaProfiles] failed to create folder for duplicated preset" << newName << ":" << luaError;
+            emit luaProfileCreateFailed(newName, luaError);
         }
         luaFolderPath = m_luaProfileManager->profileFolderPath(newId, newName);
         m_luaProfileManager->setActiveProfileId(newId);
@@ -1016,6 +1096,8 @@ void ModManager::createPresetAndReset(const QString& name) {
     if (m_luaProfileManager) {
         const QString luaError = m_luaProfileManager->createProfileFolder(id, name);
         emit luaProfileFolderResult(name, luaError);
+        if (!luaError.isEmpty())
+            emit luaProfileCreateFailed(name, luaError);
         luaFolderPath = m_luaProfileManager->profileFolderPath(id, name);
         m_luaProfileManager->setActiveProfileId(id);
     }
