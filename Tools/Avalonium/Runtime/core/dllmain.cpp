@@ -243,9 +243,17 @@ static DWORD WINAPI InitThread(LPVOID ) {
             if (ok) {
                 EngineDiscovery::SetLogResult("SUCCESS", "recovered on the retry attempt");
                 LogMsg("[Avalonium] Retry successful\n");
+
+                LogMsg("[Avalonium] Initialization successful\n");
                 const int retryPort = runtimeConfig.ServerPort > 0 ? static_cast<int>(runtimeConfig.ServerPort) : 20030;
                 g_IOCPServer = new IOCPServer();
-                g_IOCPServer->Start(retryPort);
+                if (g_IOCPServer->Start(retryPort)) {
+                    char retryMsg[128] = {};
+                    snprintf(retryMsg, sizeof(retryMsg), "[Avalonium] IOCP server started on port %d\n", retryPort);
+                    LogMsg(retryMsg);
+                } else {
+                    LogMsg("[Avalonium] Failed to start IOCP server\n");
+                }
 
                 bool luaReady = false;
                 if (runtimeConfig.EnableLuaMods) {
