@@ -2166,6 +2166,30 @@ ApplicationWindow {
         onShowSettingsRequested: window.openDownloadsPathSettings()
     }
 
+    AppUpdateDialog {
+        id: appUpdateDialog
+        appWindow: window
+    }
+
+    Connections {
+        target: updateChecker
+        function onUpdateAvailable() {
+            appUpdateDialog.begin()
+        }
+    }
+
+    LuaProfilesRestoredDialog {
+        id: luaProfilesRestoredDialog
+        appWindow: window
+    }
+
+    Connections {
+        target: modManager
+        function onLuaProfileFoldersCreated(profiles) {
+            luaProfilesRestoredDialog.showProfiles(profiles)
+        }
+    }
+
     NexusSignInDialog {
         id: nexusSignInDialog
         appWindow: window
