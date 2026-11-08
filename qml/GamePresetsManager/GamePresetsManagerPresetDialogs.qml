@@ -12,6 +12,7 @@ Item {
     property alias createPresetDialog: createPresetDialog
     property alias deleteConfirmDialog: deleteConfirmDialog
     property alias renameDialog: renameDialog
+    property alias luaProfileWarningDialog: luaProfileWarningDialog
 
     Dialog {
         id: createPresetDialog
@@ -1251,6 +1252,387 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: luaProfileWarningDialog
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 520
+        padding: 0
+
+        property var profileNames: []
+        property string errorText: ""
+        property bool pendingOpen: false
+        property real entranceOffset: 0
+        readonly property bool installedOnCDrive: applicationDirPath.length > 1
+            && applicationDirPath.charAt(0).toLowerCase() === "c"
+        readonly property bool needsAdministrator: installedOnCDrive && !modManager.isRunningAsAdmin
+
+        onClosed: {
+            profileNames = []
+            errorText = ""
+            pendingOpen = false
+        }
+
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 220 }
+            NumberAnimation { property: "scale"; from: 0.94; to: 1; duration: 320; easing.type: Easing.OutQuint }
+            NumberAnimation { property: "entranceOffset"; from: 14; to: 0; duration: 320; easing.type: Easing.OutQuint }
+        }
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 160 }
+            NumberAnimation { property: "scale"; from: 1; to: 0.97; duration: 160; easing.type: Easing.InCubic }
+            NumberAnimation { property: "entranceOffset"; from: 0; to: -8; duration: 160; easing.type: Easing.InCubic }
+        }
+
+        palette {
+            windowText: modManager.theme === "Glassmorphic" ? modManager.accentColor : window.textColor
+            text: modManager.theme === "Glassmorphic" ? modManager.accentColor : window.textColor
+        }
+
+        background: Rectangle {
+            radius: 16
+            border.width: 1
+            border.color: modManager.theme === "Glassmorphic"
+                ? Qt.rgba(255, 255, 255, 0.1)
+                : (modManager.theme === "Crimson" ? Qt.rgba(1, 1, 1, 0.10) : window.borderColor)
+            gradient: modManager.theme === "Cozy" ? presetsDialogCozyGradient
+                    : modManager.theme === "Crimson" ? presetsDialogCrimsonGradient
+                    : modManager.theme === "Wavey" ? presetsDialogWaveyGradient
+                    : null
+            color: modManager.theme === "Glassmorphic" ? Qt.rgba(0.10, 0.10, 0.15, 0.98) : "transparent"
+
+            transform: Translate { y: luaProfileWarningDialog.entranceOffset }
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.rgba(0, 0, 0, 0.4)
+                shadowVerticalOffset: 12
+                shadowBlur: 2.5
+            }
+        }
+
+        contentItem: Item {
+            implicitWidth: 520
+            implicitHeight: contentColumn.implicitHeight
+
+            transform: Translate { y: luaProfileWarningDialog.entranceOffset }
+
+            ColumnLayout {
+                id: contentColumn
+                anchors.fill: parent
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    Layout.rightMargin: 22
+                    Layout.topMargin: 20
+                    Layout.bottomMargin: 16
+                    spacing: 14
+
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 42
+                        radius: 11
+                        color: Qt.rgba(window.primaryColor.r, window.primaryColor.g,
+                                       window.primaryColor.b, 0.14)
+
+                        Image {
+                            anchors.centerIn: parent
+                            width: 20
+                            height: 20
+                            source: "qrc:/UniversalModManager/Lucide Icons/triangle-alert.svg"
+                            sourceSize: Qt.size(20, 20)
+                            smooth: true
+                            layer.enabled: true
+                            layer.effect: ColorOverlay {
+                                color: window.primaryColor
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: luaProfileWarningDialog.profileNames.length > 1
+                                  ? "Lua profiles not created"
+                                  : "Lua profile not created"
+                            font.pixelSize: 18
+                            font.weight: Font.DemiBold
+                            color: window.textColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: luaProfileWarningDialog.profileNames.length > 1
+                                  ? luaProfileWarningDialog.profileNames.length
+                                    + " profiles were saved, but their Lua mod folders are missing."
+                                  : "The profile was saved, but its Lua mod folder is missing."
+                            font.pixelSize: 12
+                            color: window.textSecondaryColor
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: window.borderColor
+                    opacity: 0.6
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    Layout.rightMargin: 22
+                    Layout.topMargin: 16
+                    Layout.bottomMargin: 18
+                    spacing: 12
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: luaProfileWarningDialog.profileNames.length > 1
+                              ? "Universal Manager could not create the folders for these profiles:"
+                              : "Universal Manager could not create the folder for \""
+                                + (luaProfileWarningDialog.profileNames[0] || "") + "\"."
+                        font.pixelSize: 13
+                        color: window.textColor
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.25
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(nameList.implicitHeight + 20, 140)
+                        visible: luaProfileWarningDialog.profileNames.length > 1
+                        radius: 10
+                        color: Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.04)
+                        border.width: 1
+                        border.color: window.borderColor
+
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            clip: true
+                            contentWidth: width
+                            contentHeight: nameList.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                            }
+
+                            Text {
+                                id: nameList
+                                width: parent.width
+                                text: luaProfileWarningDialog.profileNames.join("\n")
+                                font.pixelSize: 12
+                                color: window.textColor
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.3
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: adminNoteLayout.implicitHeight + 24
+                        visible: luaProfileWarningDialog.needsAdministrator
+                        radius: 10
+                        color: Qt.rgba(window.primaryColor.r, window.primaryColor.g,
+                                       window.primaryColor.b, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(window.primaryColor.r, window.primaryColor.g,
+                                              window.primaryColor.b, 0.28)
+
+                        RowLayout {
+                            id: adminNoteLayout
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Image {
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                                source: "qrc:/UniversalModManager/Lucide Icons/shield-alert.svg"
+                                sourceSize: Qt.size(18, 18)
+                                smooth: true
+                                layer.enabled: true
+                                layer.effect: ColorOverlay {
+                                    color: window.primaryColor
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Restart as administrator"
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                    color: window.textColor
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Universal Manager is installed on the C: drive in a protected folder. Windows blocked the Lua folder. "
+                                          + (luaProfileWarningDialog.profileNames.length > 1
+                                             ? "The profiles are already saved and will be repaired automatically the next time Universal Manager starts as administrator."
+                                             : "The profile is already saved and will be repaired automatically the next time Universal Manager starts as administrator.")
+                                    font.pixelSize: 12
+                                    color: window.textSecondaryColor
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.25
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: genericErrorLayout.implicitHeight + 24
+                        visible: !luaProfileWarningDialog.needsAdministrator
+                        radius: 10
+                        color: Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.04)
+                        border.width: 1
+                        border.color: window.borderColor
+
+                        RowLayout {
+                            id: genericErrorLayout
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Image {
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                                source: "qrc:/UniversalModManager/Lucide Icons/circle-alert.svg"
+                                sourceSize: Qt.size(18, 18)
+                                smooth: true
+                                layer.enabled: true
+                                layer.effect: ColorOverlay {
+                                    color: window.textSecondaryColor
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: (luaProfileWarningDialog.profileNames.length > 1
+                                       ? "The Lua folders could not be created. "
+                                       : "The Lua folder could not be created. ")
+                                      + luaProfileWarningDialog.errorText
+                                font.pixelSize: 12
+                                color: window.textColor
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.25
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: luaProfileWarningDialog.needsAdministrator
+                                 && luaProfileWarningDialog.errorText.length > 0
+                        text: luaProfileWarningDialog.errorText
+                        font.pixelSize: 11
+                        color: Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.55)
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 64
+                    color: Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.03)
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 1
+                        color: window.borderColor
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            Layout.preferredWidth: 88
+                            Layout.preferredHeight: 40
+                            radius: 10
+                            color: okayMouse.containsMouse ? Qt.darker(window.accentColor, 1.1) : window.accentColor
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "OK"
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                color: "#FFFFFF"
+                            }
+
+                            MouseArea {
+                                id: okayMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: luaProfileWarningDialog.close()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: luaProfileWarningOpenTimer
+        interval: 260
+        repeat: false
+        onTriggered: {
+            luaProfileWarningDialog.pendingOpen = false
+            luaProfileWarningDialog.open()
+        }
+    }
+
+    Connections {
+        target: modManager
+        function onLuaProfileCreateFailed(presetName, error) {
+            var names = luaProfileWarningDialog.profileNames.slice()
+            if (names.indexOf(presetName) === -1)
+                names.push(presetName)
+            luaProfileWarningDialog.profileNames = names
+            if (luaProfileWarningDialog.errorText === "")
+                luaProfileWarningDialog.errorText = error
+            if (gamePresetsManagerPage.gameScanDialog.opened) {
+                luaProfileWarningDialog.pendingOpen = true
+            } else {
+                luaProfileWarningOpenTimer.restart()
+            }
+        }
+    }
+
+    Connections {
+        target: gamePresetsManagerPage.gameScanDialog
+        function onClosed() {
+            if (luaProfileWarningDialog.pendingOpen)
+                luaProfileWarningOpenTimer.restart()
         }
     }
 }
