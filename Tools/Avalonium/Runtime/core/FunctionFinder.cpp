@@ -554,7 +554,8 @@ static bool HasStaticConstructRFFlagsTest(uintptr_t target) {
 
 static std::string MakeBytePattern(const wchar_t *text) {
   std::ostringstream pattern;
-  const size_t bytes = (wcslen(text) + 1) * sizeof(wchar_t);
+
+  const size_t bytes = wcslen(text) * sizeof(wchar_t);
   const auto *raw = reinterpret_cast<const uint8_t *>(text);
   for (size_t i = 0; i < bytes; ++i) {
     if (i) pattern << ' ';
@@ -661,6 +662,13 @@ static void FindStaticConstructNewObjectStringCandidates(
   const auto strings = FindAllModulePatternMatches(mainMod, pattern.c_str());
   stats.newObjectStrings = strings.size();
 
+  struct TargetHit {
+    size_t hits = 0;
+    uintptr_t callSite = 0;
+    uintptr_t xref = 0;
+  };
+  std::unordered_map<uintptr_t, TargetHit> hitsByTarget;
+
   for (const uintptr_t stringAddress : strings) {
     for (const uintptr_t xref : FindRipLeaXrefs(ranges, stringAddress)) {
       ++stats.newObjectXrefs;
@@ -677,16 +685,41 @@ static void FindStaticConstructNewObjectStringCandidates(
         memcpy(&displacement, code + i + 1, sizeof(displacement));
         const uintptr_t callSite = start + i;
         const uintptr_t target = callSite + 5 + displacement;
-        if (!IsExecutableAddress(ranges, target) ||
-            !HasStaticConstructRFFlagsTest(target))
+        if (!IsExecutableAddress(ranges, target))
           continue;
-        ++stats.rfFlagMatches;
-        ++stats.newObjectCandidates;
-        candidates.push_back(
-            {target, callSite, xref, -1, ScoreStaticConstructParameterReads(target),
-             "newobject-string"});
+        auto &hit = hitsByTarget[target];
+        if (hit.hits == 0) {
+          hit.callSite = callSite;
+          hit.xref = xref;
+        }
+        ++hit.hits;
       }
     }
+  }
+
+  std::vector<std::pair<uintptr_t, TargetHit>> ranked(hitsByTarget.begin(),
+                                                      hitsByTarget.end());
+  std::sort(ranked.begin(), ranked.end(),
+            [](const std::pair<uintptr_t, TargetHit> &a,
+               const std::pair<uintptr_t, TargetHit> &b) {
+              return a.second.hits != b.second.hits
+                         ? a.second.hits > b.second.hits
+                         : a.first < b.first;
+            });
+
+  for (const auto &rankedTarget : ranked) {
+    const uintptr_t target = rankedTarget.first;
+    const TargetHit &hit = rankedTarget.second;
+    const int memberReads = ScoreStaticConstructParameterReads(target);
+    if (memberReads < 3)
+      continue;
+    if (!HasStaticConstructRFFlagsTest(target))
+      continue;
+    ++stats.rfFlagMatches;
+    ++stats.newObjectCandidates;
+    candidates.push_back({target, hit.callSite, hit.xref, -1, memberReads,
+                          "newobject-string"});
+    return;
   }
 }
 
