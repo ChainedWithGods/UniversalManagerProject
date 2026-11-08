@@ -490,6 +490,8 @@ public slots:
     void removePresetPreview(const QString& presetId);
     void togglePresetBlur(const QString& presetId);
     void createPresetAndReset(const QString& name);
+
+    void ensureLuaProfileFolders();
     void backupMods(const QStringList& modNames);
     void backupModsAsync(const QStringList& modNames);
     void installMods(const QStringList& filePaths, const QMap<QString, QString>& updateTargets,
@@ -515,6 +517,8 @@ public slots:
     bool removeModBundleTag(const QString& bundleId, const QString& tag);
     void openModsDirectory();
     void openAppDataFolder();
+
+    void openFolderPath(const QString& path);
     void setModImage(const QString& modName, const QString& imagePath);
     QString getModImage(const QString& modName);
     void removeModImage(const QString& modName);
@@ -763,6 +767,10 @@ signals:
     void gameScanActionMessage(const QString& message, bool success);
 
     void luaProfileFolderResult(const QString& presetName, const QString& error);
+
+    void luaProfileCreateFailed(const QString& presetName, const QString& error);
+
+    void luaProfileFoldersCreated(const QVariantList& profiles);
     void availableDrivesChanged();
     void gameUEVersionDetected(const QString& gamePath, const QString& version);
     void isUeDetectRunningChanged();
