@@ -324,6 +324,12 @@ bool LuaProfileManager::seedProfileFolder(const QString& folderPath, QString* er
     }
 
     const QString defaultMods = m_modManager->defaultLuaModsDirectory();
+    return seedProfileFolderAt(folderPath, defaultMods, errorOut);
+}
+
+bool LuaProfileManager::seedProfileFolderAt(const QString& folderPath, const QString& defaultMods,
+                                            QString* errorOut)
+{
     if (defaultMods.isEmpty()) {
         if (errorOut) {
             *errorOut = QStringLiteral("Could not resolve the Avalonium Mods folder. Make sure the runtime is configured.");
@@ -339,7 +345,13 @@ bool LuaProfileManager::seedProfileFolder(const QString& folderPath, QString* er
         }
     }
 
-    QDir().mkpath(folderPath);
+    if (!QDir().mkpath(folderPath)) {
+        if (errorOut) {
+            *errorOut = QStringLiteral("Could not create the profile folder: %1")
+                .arg(QDir::toNativeSeparators(folderPath));
+        }
+        return false;
+    }
 
     QStringList missing;
     for (const QString& modName : defaultModFolders()) {
@@ -387,7 +399,10 @@ QString LuaProfileManager::createProfileFolder(const QString& presetId, const QS
         return QStringLiteral("Could not resolve the Avalonium Mods folder. Make sure the runtime is configured.");
     }
 
-    QDir().mkpath(root);
+    if (!QDir().mkpath(root)) {
+        return QStringLiteral("Could not create the Lua profiles folder: %1")
+            .arg(QDir::toNativeSeparators(root));
+    }
 
     const QString folderPath = profileFolderPath(presetId, presetName);
     if (folderPath.isEmpty()) {
