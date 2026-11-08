@@ -35,6 +35,11 @@ public:
 
     Q_INVOKABLE bool profileFolderExists(const QString& presetId) const;
 
+    static bool seedProfileFolderAt(const QString& folderPath, const QString& defaultModsDir,
+                                    QString* errorOut);
+
+    void notifyProfileFoldersChanged() { emit profileFoldersChanged(); }
+
 signals:
     void activeProfileIdChanged();
     void profilesChanged();
