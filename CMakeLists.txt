@@ -37,6 +37,8 @@ if(WIN32 AND NOT SHOW_CONSOLE)
         src/App/resourcepaths.h
         src/App/UpdateChecker.cpp
         src/App/UpdateChecker.h
+        src/App/TutorialDownloader.cpp
+        src/App/TutorialDownloader.h
 
         src/Core/modmanager.cpp
         src/Core/modmanager.h
@@ -99,6 +101,8 @@ else()
         src/App/resourcepaths.h
         src/App/UpdateChecker.cpp
         src/App/UpdateChecker.h
+        src/App/TutorialDownloader.cpp
+        src/App/TutorialDownloader.h
 
         src/Core/modmanager.cpp
         src/Core/modmanager.h
@@ -172,33 +176,33 @@ target_include_directories(UniversalManager PRIVATE
 
 if(WIN32)
     target_sources(UniversalManager PRIVATE version.rc)
-    
+
     configure_file(
         "${CMAKE_SOURCE_DIR}/app.manifest"
         "${CMAKE_CURRENT_BINARY_DIR}/UniversalManager.exe.manifest"
         COPYONLY
     )
-    
+
     set_target_properties(UniversalManager PROPERTIES
         LINK_FLAGS "/DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA"
     )
-    
+
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         target_compile_options(UniversalManager PRIVATE
             /O2
-            /Gy                    
-            /Brepro                
-            /bigobj                
-            /d1nodatetime          
-            /experimental:deterministic 
-            /d1trimfile:${CMAKE_SOURCE_DIR}/ 
+            /Gy
+            /Brepro
+            /bigobj
+            /d1nodatetime
+            /experimental:deterministic
+            /d1trimfile:${CMAKE_SOURCE_DIR}/
         )
         target_link_options(UniversalManager PRIVATE
-            /OPT:REF       
-            /OPT:ICF      
-            /Brepro         
-            /INCREMENTAL:NO 
-            /DEBUG:NONE     
+            /OPT:REF
+            /OPT:ICF
+            /Brepro
+            /INCREMENTAL:NO
+            /DEBUG:NONE
         )
     endif()
 
@@ -681,7 +685,7 @@ if(WIN32)
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
-    
+
     if(WINDEPLOYQT_EXECUTABLE)
         add_custom_command(TARGET UniversalManager POST_BUILD
             COMMAND "${WINDEPLOYQT_EXECUTABLE}"
