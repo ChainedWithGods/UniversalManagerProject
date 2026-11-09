@@ -1,3 +1,9 @@
+
+
+
+
+
+
 [CmdletBinding()]
 param(
     [string]$BuildDir     = "",
@@ -9,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
 
 $ScriptDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ScriptDir)) {
@@ -29,6 +36,7 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
 if (-not (Test-Path -LiteralPath $BuildDir)) {
     throw "Build directory not found: $BuildDir`nPass -BuildDir to specify the Qt cmake build output directory."
 }
+
 
 function Ensure-Dir([string]$p) {
     if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
@@ -75,6 +83,7 @@ function Resolve-Tool([string]$exe, [string]$pref = "") {
     return $null
 }
 
+
 $windeployqt = $null
 if (-not $SkipWindeployqt) {
     $qtDirBin = if ($env:QTDIR) { Join-Path $env:QTDIR "bin" } else { $null }
@@ -108,6 +117,7 @@ if ($sevenZip) {
     Write-Warning "7z.exe not found. Solid LZMA2 compression disabled; will fall back to ZIP."
 }
 
+
 Write-Host ""
 Write-Host "=== Step 1: Locating Pre-built Uninstaller ===" -ForegroundColor Cyan
 
@@ -120,6 +130,7 @@ if (-not (Test-Path -LiteralPath $UninstallerExe)) {
 
 $uninstSize = (Get-Item -LiteralPath $UninstallerExe).Length
 Write-Host "Found uninstaller: $UninstallerExe ($([Math]::Round($uninstSize / 1KB, 1)) KB)" -ForegroundColor Green
+
 
 Write-Host ""
 Write-Host "=== Step 2: Staging Payload ===" -ForegroundColor Cyan
@@ -177,6 +188,11 @@ $AssetsSource = if (Test-Path -LiteralPath (Join-Path $BuildDir "assets")) {
 Ensure-Dir (Join-Path $StagingDir "assets")
 & robocopy $AssetsSource (Join-Path $StagingDir "assets") /E /COPY:DAT /R:1 /W:1 /NP /NFL /NDL | Out-Null
 
+$StagedTutorials = Join-Path $StagingDir "assets\Tutorials_Guides"
+if (Test-Path -LiteralPath $StagedTutorials) {
+    Remove-Item -LiteralPath $StagedTutorials -Recurse -Force
+}
+
 $DocsRoot = Join-Path $ModsRoot "docs"
 Copy-Optional (Join-Path $DocsRoot "Readme.md")               (Join-Path $StagingDir "Readme.md")
 Copy-Optional (Join-Path $DocsRoot "Requirements.md")         (Join-Path $StagingDir "Requirements.md")
@@ -185,9 +201,10 @@ Copy-Optional (Join-Path $DocsRoot "THIRD-PARTY-LICENSES.md") (Join-Path $Stagin
 
 $ToolsBase = Join-Path $ModsRoot "Tools"
 
+
 Write-Host "Staging pre-compressed tool archives..." -ForegroundColor Yellow
 
-$pakViewer7z = Join-Path $ToolsBase "PakViewer\bin\Release\net10.0-windows10.0.19041.0\PakViewer.7z"
+$pakViewer7z = Join-Path $ToolsBase "PakViewer\bin\x64\Release\net10.0-windows10.0.19041.0\PakViewer.7z"
 if (Test-Path -LiteralPath $pakViewer7z) {
     Ensure-Dir (Join-Path $StagingDir "Tools")
     Copy-Safe $pakViewer7z (Join-Path $StagingDir "Tools\PakViewer.7z")
@@ -228,6 +245,7 @@ Copy-Safe $UninstallerExe (Join-Path $StagingDir "uninstall.exe")
 
 Write-Host "Staging complete: $StagingDir" -ForegroundColor Green
 
+
 Write-Host ""
 Write-Host "=== Step 3: Compressing Payload ===" -ForegroundColor Cyan
 
@@ -258,6 +276,7 @@ if ($sevenZip) {
     $archiveSize = (Get-Item -LiteralPath $ArchiveZip).Length
     Write-Host "app.zip created: $ArchiveZip ($([Math]::Round($archiveSize / 1MB, 1)) MB)" -ForegroundColor Green
 }
+
 
 Write-Host ""
 Write-Host "=== Step 4: Appending Overlay Payload to Installer PE ===" -ForegroundColor Cyan
