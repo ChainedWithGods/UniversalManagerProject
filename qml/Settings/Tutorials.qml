@@ -13,16 +13,26 @@ Item {
 
     property bool isGlassmorphic: modManager && modManager.theme === "Glassmorphic"
     property real glassOpacity: modManager ? modManager.glassOpacity : 0.25
-    property string appDirPath: typeof applicationDirPath === "string" ? applicationDirPath : ""
     property bool playerMuted: false
 
-    function localAssetUrl(relativePath) {
-        if (!relativePath || appDirPath === "")
+    function fileUrl(path) {
+        if (!path)
             return ""
+        var clean = path.toString().replace(/\\/g, "/")
+        return clean.indexOf("file:") === 0 ? clean : "file:///" + clean
+    }
 
-        var cleanBase = appDirPath.replace(/\\/g, "/")
-        var cleanRelative = relativePath.replace(/\\/g, "/")
-        return "file:///" + cleanBase + "/" + cleanRelative
+    function formatBytes(bytes) {
+        if (!bytes || bytes < 0)
+            return "0 B"
+        var units = ["B", "KB", "MB", "GB"]
+        var value = bytes
+        var index = 0
+        while (value >= 1024 && index < units.length - 1) {
+            value /= 1024
+            index++
+        }
+        return (index === 0 ? value : value.toFixed(1)) + " " + units[index]
     }
 
     function formatMs(milliseconds) {
@@ -48,55 +58,67 @@ Item {
         {
             "title": "How to set up a profile manually",
             "subtitle": "Create a profile from scratch and point Universal Manager to the right folders yourself.",
-            "format":"MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Profile_manually/Profile_manually.mp4"
+            "format": "MP4",
+            "sizeLabel": "2.4 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Profile_manually/Profile_manually.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Profile_manually/Profile_manually.MP4"
         },
         {
             "title": "How to use categorize system",
             "subtitle": "Walk through the categorize system.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Categorize_system/Categorize_system.mp4"
+            "sizeLabel": "20.5 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Categorize_system/Categorize_system.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Categorize_system/Categorize_system.mp4"
         },
         {
             "title": "How to inject Avalonium",
             "subtitle": "Inject Avalonium, a runtime dumper and scripting engine, into your game.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Avalonium_injection/Avalonium_injection.mp4"
+            "sizeLabel": "2.2 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Avalonium_injection/Avalonium_injection.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Avalonium_injection/Avalonium_injection.mp4"
         },
         {
             "title": "How to inject Avalonium using advanced injection",
             "subtitle": "Use advanced injection to inject Avalonium, a runtime dumper and scripting engine, into your game.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Advanced_injection/Advanced_injection.mp4"
+            "sizeLabel": "2.3 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Advanced_injection/Advanced_injection.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Advanced_injection/Advanced_injection.mp4"
         },
         {
             "title": "How to generate usmap & sdk",
             "subtitle": "Generate a .usmap file and SDK for modding.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Runtime_generation/Runtime_generation.mp4"
-         },
-        {
-
-            "title": "How to load Avaloium using dwmapi.dll",
-            "subtitle": "Manual Avaloium loading using dwmapi.dll.",
-            "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/HowToLoadAvaloniumWithdwmapi.dll/AvaloniumWithdwmapi.dll.mp4"
+            "sizeLabel": "5.7 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Runtime_generation/Runtime_generation.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Runtime_generation/Runtime_generation.mp4"
         },
         {
-
+            "title": "How to load Avalonium using dwmapi.dll",
+            "subtitle": "Manual Avalonium loading using dwmapi.dll.",
+            "format": "MP4",
+            "sizeLabel": "35.2 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/HowToLoadAvaloniumWithdwmapi.dll/AvaloniumWithdwmapi.dll.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/HowToLoadAvaloniumWithdwmapi.dll/AvaloniumWithdwmapi.dll.mp4"
+        },
+        {
             "title": "How to install Lua mods",
             "subtitle": "Installing Lua mods and run them with Avalonium.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Installing_Lua_Mods/LuaMods.mp4"
+            "sizeLabel": "31.3 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Installing_Lua_Mods/LuaMods.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Installing_Lua_Mods/LuaMods.mp4"
         },
         {
-
             "title": "How to install Blueprint mods",
             "subtitle": "Installing Blueprint mods and run them with Avalonium.",
             "format": "MP4",
-            "videoRelativePath": "assets/Tutorials_Guides/Installing_BP_Mods/BPMods.mp4"
+            "sizeLabel": "76.0 MB",
+            "videoRelativePath": "assets/Tutorials_Guides/Installing_BP_Mods/BPMods.mp4",
+            "downloadUrl": "https://raw.githubusercontent.com/ChainedWithGods/UniversalManagerProject/main/assets/Tutorials_Guides/Installing_BP_Mods/BPMods.mp4"
         }
-
     ]
 
     Dialog {
@@ -110,7 +132,7 @@ Item {
         width: parent ? parent.width : tutorialsPage.width
         height: parent ? parent.height : tutorialsPage.height
         closePolicy: Popup.CloseOnEscape
-
+        
         property var tutorialData: null
         property url videoSource: ""
         property real overlayMargin: Math.max(20, Math.min(width, height) * 0.035)
@@ -129,36 +151,38 @@ Item {
         property real videoViewportHeight: videoViewportWidth / sourceVideoAspectRatio
         property real dialogContentWidth: Math.min(maxDialogWidth, videoViewportWidth + (contentPadding * 2))
         property real dialogContentHeight: Math.min(maxDialogHeight, headerHeight + videoViewportHeight + controlsHeight + contentPadding)
-
-        function openWithTutorial(tutorial) {
+        
+        function openWithTutorial(tutorial, localPath) {
+            if (!localPath)
+                return
             tutorialData = tutorial
-            videoSource = localAssetUrl(tutorial.videoRelativePath || "")
+            videoSource = fileUrl(localPath)
             videoPlayer.source = videoSource
             videoPlayer.play()
             open()
         }
-
+        
         onClosed: {
             videoPlayer.stop()
             videoPlayer.source = ""
         }
-
+        
         background: Rectangle {
             color: Qt.rgba(0, 0, 0, 0.78)
         }
-
+        
         Item {
             anchors.fill: parent
             Rectangle {
                 anchors.fill: parent
                 color: "transparent"
-
+                
                 MouseArea {
                     anchors.fill: parent
                     onClicked: videoPlayerDialog.close()
                 }
             }
-
+            
             Rectangle {
                 anchors.centerIn: parent
                 width: videoPlayerDialog.dialogContentWidth
@@ -526,7 +550,15 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
 
-                        onClicked: videoPlayerDialog.openWithTutorial(tutorialCardContainer.modelData)
+                        onClicked: {
+                            var tutorial = tutorialCardContainer.modelData
+                            var localPath = tutorialDownloader.resolveVideo(tutorial.videoRelativePath)
+                            if (localPath !== "") {
+                                videoPlayerDialog.openWithTutorial(tutorial, localPath)
+                            } else {
+                                tutorialDownloadDialog.openFor(tutorial)
+                            }
+                        }
                     }
 
                     Rectangle {
@@ -650,6 +682,408 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: tutorialDownloadDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: 460
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        property var tutorialData: null
+        property string resolvedPath: ""
+        property string viewState: "prompt"
+
+        readonly property color cardColor: modManager.theme === "Glassmorphic"
+            ? Qt.rgba(0.10, 0.10, 0.15, 0.98)
+            : window.surfaceColor
+        readonly property bool darkTextOnPrimary:
+            (0.2126 * window.primaryColor.r + 0.7152 * window.primaryColor.g
+             + 0.0722 * window.primaryColor.b) > 0.55
+
+        function openFor(tutorial) {
+            tutorialData = tutorial
+            resolvedPath = ""
+            viewState = "prompt"
+            open()
+        }
+
+        function startDownload() {
+            if (!tutorialData)
+                return
+            resolvedPath = ""
+            viewState = "downloading"
+            tutorialDownloader.download(tutorialData.videoRelativePath, tutorialData.downloadUrl)
+        }
+
+        function playVideo() {
+            var path = resolvedPath
+            if (!path && tutorialData)
+                path = tutorialDownloader.resolveVideo(tutorialData.videoRelativePath)
+            if (!path)
+                return
+            var tutorial = tutorialData
+            close()
+            videoPlayerDialog.openWithTutorial(tutorial, path)
+        }
+
+        onClosed: {
+            if (viewState === "downloading")
+                tutorialDownloader.cancel()
+        }
+
+        background: Rectangle {
+            radius: 20
+            color: tutorialDownloadDialog.cardColor
+            border.width: 1
+            border.color: window.borderColor
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.rgba(0, 0, 0, 0.35)
+                shadowVerticalOffset: 16
+                shadowBlur: 1.5
+            }
+        }
+
+        contentItem: Item {
+            implicitWidth: 460
+            implicitHeight: downloadContent.implicitHeight
+
+            ColumnLayout {
+                id: downloadContent
+                anchors.fill: parent
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    Layout.rightMargin: 22
+                    Layout.topMargin: 20
+                    Layout.bottomMargin: 16
+                    spacing: 14
+
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 42
+                        radius: 11
+                        color: Qt.rgba(window.primaryColor.r, window.primaryColor.g,
+                                       window.primaryColor.b, 0.14)
+
+                        Image {
+                            anchors.centerIn: parent
+                            width: 20
+                            height: 20
+                            source: tutorialDownloadDialog.viewState === "downloaded"
+                                ? "qrc:/UniversalModManager/Lucide Icons/play.svg"
+                                : "qrc:/UniversalModManager/Lucide Icons/cloud-download.svg"
+                            sourceSize: Qt.size(20, 20)
+                            smooth: true
+                            layer.enabled: true
+                            layer.effect: ColorOverlay {
+                                color: window.primaryColor
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: tutorialDownloadDialog.tutorialData
+                                ? tutorialDownloadDialog.tutorialData.title
+                                : "Tutorial guide"
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                            color: window.textColor
+                            wrapMode: Text.Wrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: tutorialDownloadDialog.tutorialData
+                                ? "MP4 video · " + tutorialDownloadDialog.tutorialData.sizeLabel
+                                : "MP4 video"
+                            font.pixelSize: 12
+                            color: window.textSecondaryColor
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: window.borderColor
+                    opacity: 0.6
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    Layout.rightMargin: 22
+                    Layout.topMargin: 16
+                    Layout.bottomMargin: 18
+                    spacing: 12
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: tutorialDownloadDialog.viewState === "prompt"
+                        text: "This guide is not downloaded yet. Download it once to watch it on this PC."
+                        font.pixelSize: 13
+                        color: window.textColor
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.25
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: tutorialDownloadDialog.viewState === "downloading"
+                        text: "Downloading guide..."
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: window.textColor
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 6
+                        visible: tutorialDownloadDialog.viewState === "downloading"
+                        radius: 3
+                        color: Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.12)
+
+                        Rectangle {
+                            width: Math.max(0, Math.min(1, tutorialDownloader.progress)) * parent.width
+                            height: parent.height
+                            radius: 3
+                            color: window.primaryColor
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: tutorialDownloadDialog.viewState === "downloading"
+                        text: Math.round(tutorialDownloader.progress * 100) + "%"
+                              + (tutorialDownloader.bytesTotal > 0
+                                 ? "  ·  " + tutorialsPage.formatBytes(tutorialDownloader.bytesReceived)
+                                   + " / " + tutorialsPage.formatBytes(tutorialDownloader.bytesTotal)
+                                 : "")
+                        font.pixelSize: 11
+                        color: window.textSecondaryColor
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: tutorialDownloadDialog.viewState === "downloaded"
+                        text: "Download complete. The guide is ready to play."
+                        font.pixelSize: 13
+                        color: window.textColor
+                        wrapMode: Text.Wrap
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: tutorialDownloadDialog.viewState === "failed"
+                        text: tutorialDownloader.errorText.length > 0
+                            ? tutorialDownloader.errorText
+                            : "The guide could not be downloaded. Check your connection and try again."
+                        font.pixelSize: 12
+                        color: window.textColor
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.25
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 64
+                    color: "transparent"
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        width: parent.width
+                        height: 1
+                        color: window.borderColor
+                        opacity: 0.6
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 22
+                        anchors.rightMargin: 22
+                        spacing: 10
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            Layout.preferredWidth: 88
+                            Layout.preferredHeight: 38
+                            radius: 9
+                            visible: tutorialDownloadDialog.viewState === "prompt"
+                                     || tutorialDownloadDialog.viewState === "downloading"
+                                     || tutorialDownloadDialog.viewState === "failed"
+                            color: cancelMouse.containsMouse
+                                ? Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.06)
+                                : "transparent"
+                            border.width: 1
+                            border.color: window.borderColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: (tutorialDownloadDialog.viewState === "prompt"
+                                       || tutorialDownloadDialog.viewState === "downloading") ? "Cancel" : "Close"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                color: window.textColor
+                            }
+
+                            MouseArea {
+                                id: cancelMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (tutorialDownloadDialog.viewState === "downloading")
+                                        tutorialDownloader.cancel()
+                                    tutorialDownloadDialog.close()
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 100
+                            Layout.preferredHeight: 38
+                            radius: 9
+                            visible: tutorialDownloadDialog.viewState === "prompt"
+                            color: downloadMouse.containsMouse
+                                ? Qt.lighter(window.primaryColor, 1.08)
+                                : window.primaryColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Download"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                color: tutorialDownloadDialog.darkTextOnPrimary ? "#1A1A1A" : "#FFFFFF"
+                            }
+
+                            MouseArea {
+                                id: downloadMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tutorialDownloadDialog.startDownload()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 80
+                            Layout.preferredHeight: 38
+                            radius: 9
+                            visible: tutorialDownloadDialog.viewState === "downloaded"
+                            color: closeDownloadedMouse.containsMouse
+                                ? Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.06)
+                                : "transparent"
+                            border.width: 1
+                            border.color: window.borderColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Close"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                color: window.textColor
+                            }
+
+                            MouseArea {
+                                id: closeDownloadedMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tutorialDownloadDialog.close()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 80
+                            Layout.preferredHeight: 38
+                            radius: 9
+                            visible: tutorialDownloadDialog.viewState === "downloaded"
+                            color: playDownloadedMouse.containsMouse
+                                ? Qt.lighter(window.primaryColor, 1.08)
+                                : window.primaryColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Play"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                color: tutorialDownloadDialog.darkTextOnPrimary ? "#1A1A1A" : "#FFFFFF"
+                            }
+
+                            MouseArea {
+                                id: playDownloadedMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tutorialDownloadDialog.playVideo()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 90
+                            Layout.preferredHeight: 38
+                            radius: 9
+                            visible: tutorialDownloadDialog.viewState === "failed"
+                            color: retryMouse.containsMouse
+                                ? Qt.lighter(window.primaryColor, 1.08)
+                                : window.primaryColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Retry"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                color: tutorialDownloadDialog.darkTextOnPrimary ? "#1A1A1A" : "#FFFFFF"
+                            }
+
+                            MouseArea {
+                                id: retryMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tutorialDownloadDialog.startDownload()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: tutorialDownloader
+        function onDownloadCompleted(relativePath, localPath) {
+            if (!tutorialDownloadDialog.visible || !tutorialDownloadDialog.tutorialData)
+                return
+            if (relativePath !== tutorialDownloadDialog.tutorialData.videoRelativePath)
+                return
+            tutorialDownloadDialog.resolvedPath = localPath
+            tutorialDownloadDialog.viewState = "downloaded"
+        }
+        function onStateChanged() {
+            if (!tutorialDownloadDialog.visible)
+                return
+            if (tutorialDownloader.state === "failed")
+                tutorialDownloadDialog.viewState = "failed"
+            else if (tutorialDownloader.state === "downloading")
+                tutorialDownloadDialog.viewState = "downloading"
         }
     }
 }
