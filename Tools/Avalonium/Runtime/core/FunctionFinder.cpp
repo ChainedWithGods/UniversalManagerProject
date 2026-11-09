@@ -538,18 +538,59 @@ static int ScoreStaticConstructParameterReads(uintptr_t target) {
   return hasReturn ? static_cast<int>(memberOffsets.size()) : 0;
 }
 
-static bool HasStaticConstructRFFlagsTest(uintptr_t target) {
+struct StaticConstructBody {
+  size_t bodyBytes = 0;
+  bool maskInBody = false;
+};
 
-  constexpr size_t kProbeSize = 0x1200;
+static StaticConstructBody ProbeStaticConstructBody(uintptr_t target) {
+  StaticConstructBody body;
+  constexpr size_t kProbeSize = 0x800;
   uint8_t code[kProbeSize] = {};
   if (!SafeMem_Read(reinterpret_cast<void *>(target), code, sizeof(code)))
-    return false;
-  constexpr uint8_t kRFMask[] = {0x80, 0x00, 0x00, 0x10};
-  for (size_t i = 0; i + sizeof(kRFMask) <= sizeof(code); ++i) {
-    if (memcmp(code + i, kRFMask, sizeof(kRFMask)) == 0)
-      return true;
+    return body;
+  body.bodyBytes = kProbeSize;
+  for (size_t i = 0; i + 3 < sizeof(code); ++i) {
+    if (code[i] == 0xC3 || code[i] == 0xC2) {
+      body.bodyBytes = i;
+      break;
+    }
   }
-  return false;
+  static constexpr uint8_t kRFMask[] = {0x80, 0x00, 0x00, 0x10};
+  for (size_t i = 0; i + sizeof(kRFMask) <= body.bodyBytes; ++i) {
+    if (memcmp(code + i, kRFMask, sizeof(kRFMask)) == 0) {
+      body.maskInBody = true;
+      break;
+    }
+  }
+  return body;
+}
+
+static size_t CountDirectCallers(const std::vector<ExecutableRange> &ranges,
+                                 uintptr_t target) {
+  constexpr size_t kChunkSize = 256 * 1024;
+  std::vector<uint8_t> code(kChunkSize);
+  for (const auto &range : ranges) {
+    for (uintptr_t cursor = range.begin; cursor < range.end;) {
+      const size_t bytesToRead = static_cast<size_t>(
+          (std::min)(range.end - cursor, static_cast<uintptr_t>(kChunkSize)));
+      if (bytesToRead < 5)
+        break;
+      if (SafeMem_ReadSpanExact(reinterpret_cast<const void *>(cursor), code.data(),
+                                bytesToRead) == bytesToRead) {
+        for (size_t i = 0; i + 5 <= bytesToRead; ++i) {
+          if (code[i] != 0xE8 && code[i] != 0xE9)
+            continue;
+          int32_t displacement = 0;
+          memcpy(&displacement, code.data() + i + 1, sizeof(displacement));
+          if (cursor + i + 5 + displacement == target)
+            return 1;
+        }
+      }
+      cursor += bytesToRead;
+    }
+  }
+  return 0;
 }
 
 static std::string MakeBytePattern(const wchar_t *text) {
@@ -710,11 +751,9 @@ static void FindStaticConstructNewObjectStringCandidates(
   for (const auto &rankedTarget : ranked) {
     const uintptr_t target = rankedTarget.first;
     const TargetHit &hit = rankedTarget.second;
+    if (!ProbeStaticConstructBody(target).maskInBody)
+      continue;
     const int memberReads = ScoreStaticConstructParameterReads(target);
-    if (memberReads < 3)
-      continue;
-    if (!HasStaticConstructRFFlagsTest(target))
-      continue;
     ++stats.rfFlagMatches;
     ++stats.newObjectCandidates;
     candidates.push_back({target, hit.callSite, hit.xref, -1, memberReads,
@@ -787,13 +826,11 @@ static void FindStaticConstructByCallerFrequency(
   for (auto &[target, fe] : freq) {
     if (fe.bestMemberReads < 3)
       continue;
-    const bool hasRF = HasStaticConstructRFFlagsTest(target);
-    if (!hasRF && fe.bestMemberReads < 5)
+    if (!ProbeStaticConstructBody(target).maskInBody)
       continue;
-    if (hasRF)
-      ++stats.rfFlagMatches;
+    ++stats.rfFlagMatches;
     ++stats.callerFreqCandidates;
-    int totalScore = (hasRF ? 100 : 0) + fe.bestMemberReads * 10 + static_cast<int>(fe.callCount);
+    int totalScore = 100 + fe.bestMemberReads * 10 + static_cast<int>(fe.callCount);
     verified.push_back({target, fe, totalScore});
   }
   if (verified.empty())
@@ -962,13 +999,12 @@ static void FindStaticConstructByRFPopulationScan(
       std::vector<uintptr_t> starts(functionStarts.begin(), functionStarts.end());
       if (starts.size() < 64) {
         for (const uintptr_t fnStart : starts) {
+          if (!ProbeStaticConstructBody(fnStart).maskInBody)
+            continue;
           const int memberReads = ScoreStaticConstructParameterReads(fnStart);
           if (memberReads < 3)
             continue;
-          int score = memberReads * 10;
-          if (HasStaticConstructRFFlagsTest(fnStart))
-            score += 30;
-          scored.push_back({fnStart, score, memberReads});
+          scored.push_back({fnStart, memberReads * 10 + 30, memberReads});
         }
       } else {
         unsigned hw = std::thread::hardware_concurrency();
@@ -985,13 +1021,12 @@ static void FindStaticConstructByRFPopulationScan(
               if (i >= starts.size())
                 break;
               const uintptr_t fnStart = starts[i];
+              if (!ProbeStaticConstructBody(fnStart).maskInBody)
+                continue;
               const int memberReads = ScoreStaticConstructParameterReads(fnStart);
               if (memberReads < 3)
                 continue;
-              int score = memberReads * 10;
-              if (HasStaticConstructRFFlagsTest(fnStart))
-                score += 30;
-              local[w].push_back({fnStart, score, memberReads});
+              local[w].push_back({fnStart, memberReads * 10 + 30, memberReads});
             }
           });
         }
@@ -1006,7 +1041,8 @@ static void FindStaticConstructByRFPopulationScan(
                     return a.score > b.score;
                   });
         if (scored[0].score >= 50 &&
-            (scored.size() == 1 || scored[0].score >= scored[1].score + 10)) {
+            (scored.size() == 1 || scored[0].score >= scored[1].score + 10) &&
+            CountDirectCallers(ranges, scored[0].start) != 0) {
           ++stats.rfPopulationCandidates;
           ++stats.rfFlagMatches;
           candidates.push_back({scored[0].start, 0, 0, -1,
@@ -1068,10 +1104,9 @@ FindVerifiedStaticConstructCandidates(EngineState &state,
 bool FindStaticConstructObject(EngineState &state) {
   if (state.StaticConstructObject) {
     const uintptr_t target = reinterpret_cast<uintptr_t>(state.StaticConstructObject);
-    const int memberReads = ScoreStaticConstructParameterReads(target);
-    const bool hasRf = HasStaticConstructRFFlagsTest(target);
-    if (memberReads >= 3 && hasRf) {
-      state.bStaticConstructTakesParams = (memberReads >= 3) || (state.UEMajor >= 5) || (state.UEMajor == 4 && state.UEMinor >= 23);
+    if (ProbeStaticConstructBody(target).maskInBody) {
+      const int memberReads = ScoreStaticConstructParameterReads(target);
+      state.bStaticConstructTakesParams = (memberReads >= 3) || (state.UEMajor >= 5) || (state.UEMajor == 4 && state.UEMinor >= 26);
       Log("[Discovery] StaticConstructObject_Internal verified from cache: %p (RF flags; parameter-members=%d).",
           reinterpret_cast<void *>(target), memberReads);
       return true;
@@ -1112,7 +1147,7 @@ bool FindStaticConstructObject(EngineState &state) {
   const auto &candidate = candidates.front();
   state.StaticConstructObject =
       reinterpret_cast<StaticConstructObject_Internal_t>(candidate.target);
-  state.bStaticConstructTakesParams = (candidate.parameterMemberReads >= 3) || (state.UEMajor >= 5) || (state.UEMajor == 4 && state.UEMinor >= 23);
+  state.bStaticConstructTakesParams = (candidate.parameterMemberReads >= 3) || (state.UEMajor >= 5) || (state.UEMajor == 4 && state.UEMinor >= 26);
   if (stats.nativeFieldOffset >= 0) {
     Log("[Discovery] StaticConstructObject_Internal verified: %p (pattern=%s; RF flags; parameter-members=%d; UFunction::Func=0x%X, native-bindings=%zu).",
         reinterpret_cast<void *>(state.StaticConstructObject), candidate.evidence,
