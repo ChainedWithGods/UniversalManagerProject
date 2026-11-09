@@ -185,7 +185,7 @@ bool TryLoadSnapshot(EngineState &state, HMODULE hModule) {
   state.GUObjectHashTables  = snap.GUObjectHashTables_RVA  ? reinterpret_cast<void *>(mainMod.base + snap.GUObjectHashTables_RVA)  : nullptr;
   state.FNameToString       = snap.FNameToString_RVA       ? reinterpret_cast<FName_ToString_t>(mainMod.base + snap.FNameToString_RVA)                              : nullptr;
   state.StaticConstructObject = snap.StaticConstructObject_RVA ? reinterpret_cast<StaticConstructObject_Internal_t>(mainMod.base + snap.StaticConstructObject_RVA)  : nullptr;
-  state.bStaticConstructTakesParams = (snap.Header.UEMajor >= 5 || (snap.Header.UEMajor == 4 && snap.Header.UEMinor >= 23)) ? true : (snap.bStaticConstructTakesParams != 0);
+  state.bStaticConstructTakesParams = (snap.Header.UEMajor >= 5 || (snap.Header.UEMajor == 4 && snap.Header.UEMinor >= 26)) ? true : (snap.bStaticConstructTakesParams != 0);
   state.IConsoleManager     = nullptr;
   state.IConsoleManagerLocation = nullptr;
   if (snap.IConsoleManagerLocation_RVA) {
