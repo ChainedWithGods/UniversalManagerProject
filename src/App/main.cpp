@@ -48,6 +48,7 @@
 #include "AnimatedImageStore.h"
 #include "DownloadManager.h"
 #include "UpdateChecker.h"
+#include "TutorialDownloader.h"
 #include "resourcepaths.h"
 
 namespace {
@@ -113,7 +114,6 @@ QtMessageHandler g_previousMessageHandler = nullptr;
 
 void filterWebEngineConsoleNoise(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
-
     const bool jsConsole = (context.category && qstrcmp(context.category, "js") == 0)
         || message.startsWith(QLatin1String("js: "));
     if (message.contains(QLatin1String("Failed to create WebGPU Context Provider"))
@@ -315,11 +315,9 @@ int main(int argc, char* argv[])
         ? QByteArrayLiteral("SHOW\n")
         : QByteArray("NXM " + pendingNxmUrl.toUtf8() + "\n");
 #ifdef Q_OS_WIN
-
     AllowSetForegroundWindow(ASFW_ANY);
 #endif
     if (trayHelper.isAnotherInstanceRunning(instanceMessage)) {
-
         return 0;
     }
 
@@ -343,7 +341,6 @@ int main(int argc, char* argv[])
     QSurfaceFormat::setDefaultFormat(format);
 
 #ifdef Q_OS_WIN
-
     qputenv("QT_D3D_NO_FLIP", "1");
 #endif
 
@@ -367,6 +364,7 @@ int main(int argc, char* argv[])
     auto downloadManager = new DownloadManager(&app);
     auto notificationManager = new NotificationManager(&app);
     auto updateChecker = new UpdateChecker(&app);
+    auto tutorialDownloader = new TutorialDownloader(&app);
     modManager->setDownloadManager(downloadManager);
     auto titleBarController = new WindowsTitleBarController(&engine, modManager, &app);
     auto aggressiveRam = new AggressiveRam(&app, modManager);
@@ -383,6 +381,7 @@ int main(int argc, char* argv[])
     engine.rootContext()->setContextProperty("downloadManager", downloadManager);
     engine.rootContext()->setContextProperty("notificationManager", notificationManager);
     engine.rootContext()->setContextProperty("updateChecker", updateChecker);
+    engine.rootContext()->setContextProperty("tutorialDownloader", tutorialDownloader);
     engine.rootContext()->setContextProperty("trayHelper", &trayHelper);
     engine.rootContext()->setContextProperty("titleBarController", titleBarController);
 
@@ -406,7 +405,6 @@ int main(int argc, char* argv[])
         if (const HWND hwnd = reinterpret_cast<HWND>(window->winId())) {
             if (IsIconic(hwnd))
                 ShowWindow(hwnd, SW_RESTORE);
-
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
@@ -434,10 +432,8 @@ int main(int argc, char* argv[])
 
     QUrl url;
     if (modManager->showSplashScreen()) {
-
         url = QUrl(ResourcePaths::splashScreen);
     } else {
-
         url = QUrl(ResourcePaths::mainQml);
     }
 
@@ -456,7 +452,6 @@ int main(int argc, char* argv[])
                          if (isMainWindow) {
                              *mainWindowRef = window;
                              titleBarController->attachToWindow(window);
-
                              new LibraryEscapeFilter(window);
                          }
 
