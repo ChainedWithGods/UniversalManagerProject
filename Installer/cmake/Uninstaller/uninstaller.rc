@@ -14,8 +14,8 @@ CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "uninstaller.manifest"
 
 // Version Info
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,1,0,0
-PRODUCTVERSION 1,1,0,0
+FILEVERSION 1,2,0,0
+PRODUCTVERSION 1,2,0,0
 FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
 FILEFLAGS 0x1L
@@ -32,12 +32,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Universal Manager Project"
             VALUE "FileDescription", "Universal Mod Manager Uninstaller Setup"
-            VALUE "FileVersion", "1.1.0.0"
+            VALUE "FileVersion", "1.2.0.0"
             VALUE "InternalName", "uninstall.exe"
             VALUE "LegalCopyright", "Copyright (C) 2026 Universal Manager Project"
             VALUE "OriginalFilename", "uninstall.exe"
             VALUE "ProductName", "Universal Mod Manager"
-            VALUE "ProductVersion", "1.1.0.0"
+            VALUE "ProductVersion", "1.2.0.0"
         END
     END
     BLOCK "VarFileInfo"
