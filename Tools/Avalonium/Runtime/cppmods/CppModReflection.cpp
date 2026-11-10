@@ -1,4 +1,4 @@
-﻿#include "CppModReflection.h"
+#include "CppModReflection.h"
 
 #include "../console/ConsoleInternal.h"
 #include "../core/BlueprintDiscovery.h"
@@ -44,7 +44,15 @@ namespace Avalonium::CppMods
         bool IsClassObject(const EngineState& state, UObject* object)
         {
             if (!object || !state.UClassClass) return false;
-            if (EngineDiscovery::GetObjectClass(state, object) != state.UClassClass) return false;
+
+            UClass* objectClass = EngineDiscovery::GetObjectClass(state, object);
+            if (!objectClass) return false;
+            if (objectClass != state.UClassClass &&
+                !EngineDiscovery::IsStructA(state, reinterpret_cast<UStruct*>(objectClass),
+                                            reinterpret_cast<UStruct*>(state.UClassClass)))
+            {
+                return false;
+            }
 
             uint32_t flags = 0;
             if (state.UObject_FlagsOff >= 0 &&
