@@ -207,7 +207,11 @@ static DWORD WINAPI InitThread(LPVOID ) {
             g_ConsoleThread = CreateThread(nullptr, 0, InputAndConsoleThread, nullptr, 0, nullptr);
         }
 
-        if (runtimeConfig.EnableInGameGui || runtimeConfig.EnableLuaMods) {
+        if (runtimeConfig.EnableInGameGui || runtimeConfig.EnableLuaMods ||
+            runtimeConfig.EnableCppMods) {
+            if (!runtimeConfig.EnableInGameGui && !runtimeConfig.EnableLuaMods) {
+                LogMsg("[Overlay] Starting overlay bootstrap for native C++ mods\n");
+            }
             OverlayIntegration::Start();
         }
 
@@ -253,6 +257,14 @@ static DWORD WINAPI InitThread(LPVOID ) {
                     LogMsg(retryMsg);
                 } else {
                     LogMsg("[Avalonium] Failed to start IOCP server\n");
+                }
+
+                if (runtimeConfig.EnableInGameGui || runtimeConfig.EnableLuaMods ||
+                    runtimeConfig.EnableCppMods) {
+                    if (!runtimeConfig.EnableInGameGui && !runtimeConfig.EnableLuaMods) {
+                        LogMsg("[Overlay] Starting overlay bootstrap for native C++ mods\n");
+                    }
+                    OverlayIntegration::Start();
                 }
 
                 bool luaReady = false;
