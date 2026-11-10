@@ -876,7 +876,8 @@ static LRESULT CALLBACK GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
       }
       const RuntimeFeatureConfig& cfg = RuntimeConfig::Load(g_Module);
       std::string keyName = GetKeyNameFromVK(wParam);
-      if (!keyName.empty() && cfg.EnableLuaMods) {
+
+      if (!keyName.empty() && (cfg.EnableLuaMods || cfg.EnableCppMods)) {
 
         LuaEngine::LuaHookManager::Get().OnKeyPress(keyName);
       }
