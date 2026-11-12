@@ -550,6 +550,7 @@ public slots:
     Q_INVOKABLE QVariantMap loadAvaloniumConfig() const;
     Q_INVOKABLE QString saveAvaloniumConfig(const QVariantMap& config);
     Q_INVOKABLE QString setAvaloniumLuaModsPath(const QString& luaModsPath);
+    Q_INVOKABLE QString setAvaloniumCppModsPath(const QString& cppModsPath);
     Q_INVOKABLE void updatePresetLuaModsConfig(const QString& presetId, const QString& luaModsPath, bool useSharedLuaMods);
     Q_INVOKABLE bool isPresetUsingSharedLuaMods(const QString& presetId = QString()) const;
     Q_INVOKABLE QString avaloniumConfigWriteBlockReason() const;
@@ -846,6 +847,8 @@ private:
     int findPresetIndexById(const QString& presetId) const;
 
     QString activeLuaModsRoot() const;
+
+    QString activeCppModsRoot() const;
 
     QString formatBytes(qint64 bytes) const;
     bool copyRecursively(const QString& srcPath, const QString& dstPath);
