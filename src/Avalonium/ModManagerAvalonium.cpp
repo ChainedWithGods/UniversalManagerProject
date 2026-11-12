@@ -561,6 +561,14 @@ QString ModManager::activeLuaModsRoot() const
     return m_luaProfileManager->profileFolderPath(m_activePresetId);
 }
 
+QString ModManager::activeCppModsRoot() const
+{
+    if (m_activePresetId.isEmpty() || !m_luaProfileManager) {
+        return QString();
+    }
+    return m_luaProfileManager->cppModsFolderForProfile(m_activePresetId);
+}
+
 QString ModManager::saveAvaloniumConfig(const QVariantMap& config) {
     const QString configPath = avaloniumConfigPath();
     if (configPath.isEmpty()) {
@@ -840,6 +848,12 @@ QString ModManager::saveAvaloniumConfig(const QVariantMap& config) {
 QString ModManager::setAvaloniumLuaModsPath(const QString& luaModsPath) {
     QVariantMap config = loadAvaloniumConfig();
     config[QStringLiteral("LuaModsPath")] = luaModsPath;
+    return saveAvaloniumConfig(config);
+}
+
+QString ModManager::setAvaloniumCppModsPath(const QString& cppModsPath) {
+    QVariantMap config = loadAvaloniumConfig();
+    config[QStringLiteral("CppModsPath")] = cppModsPath;
     return saveAvaloniumConfig(config);
 }
 
