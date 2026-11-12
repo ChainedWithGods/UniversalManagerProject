@@ -26,6 +26,15 @@ bool groupHasLuaRoot(const QVariantMap& group)
     return false;
 }
 
+bool groupHasCppRoot(const QVariantMap& group)
+{
+    for (const QVariant& value : group.value("installRoots").toList()) {
+        if (value.toMap().value("rootKind").toString() == QStringLiteral("cpp"))
+            return true;
+    }
+    return false;
+}
+
 QSet<QString> modExtensionsInGroup(const QVariantMap& group)
 {
     QSet<QString> extensions;
@@ -442,6 +451,7 @@ void ModManager::installMods(const QStringList& filePaths,
                 planContext.modsPath = m_modsPathInternal;
                 planContext.gamePaksPath = m_gamePaksPath;
                 planContext.luaModsRoot = activeLuaModsRoot();
+                planContext.cppModsRoot = activeCppModsRoot();
                 planContext.installName = baseName;
                 const ModInstallPlanner::Result installPlan =
                     ModInstallPlanner::analyze(tempDir, planContext);
@@ -638,6 +648,7 @@ void ModManager::installMods(const QStringList& filePaths,
             planContext.modsPath = m_modsPathInternal;
             planContext.gamePaksPath = m_gamePaksPath;
             planContext.luaModsRoot = activeLuaModsRoot();
+            planContext.cppModsRoot = activeCppModsRoot();
             planContext.installName = fileInfo.fileName();
             const ModInstallPlanner::Result installPlan =
                 ModInstallPlanner::analyze(filePath, planContext);
@@ -878,8 +889,12 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
         m_luaProfileManager->createProfileFolder(m_activePresetId, QString());
     }
 
+    const QString cppModsRoot = activeCppModsRoot();
+    if (!cppModsRoot.isEmpty())
+        QDir().mkpath(cppModsRoot);
+
     (void)QtConcurrent::run([this, modMappings, installedByArchive, installBundleSources, luaModsRoot,
-                             luaEnableGroups]() {
+                             cppModsRoot, luaEnableGroups]() {
 
         m_modNameMappings.clear();
         m_selectedFiles.clear();
@@ -949,6 +964,7 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
         QStringList installErrors;
         QSet<QString> paksInstalledArchives;
         bool luaInstalled = false;
+        bool cppInstalled = false;
         QStringList luaEnableAfterInstall;
         auto copyExtraArchiveFiles = [](const QString& scopePath, const QString& modFolder, bool recursive) {
             const QDir scopeDir(scopePath);
@@ -1030,6 +1046,7 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
                     planContext.modsPath = m_modsPathInternal;
                     planContext.gamePaksPath = m_gamePaksPath;
                     planContext.luaModsRoot = luaModsRoot;
+                    planContext.cppModsRoot = cppModsRoot;
                     planContext.installName = QFileInfo(filePath).completeBaseName();
                     const ModInstallPlanner::Result installPlan =
                         ModInstallPlanner::analyze(tempExtractDir, planContext);
@@ -1064,6 +1081,8 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
                                                 planned.leaf.isEmpty() ? originalName : planned.leaf);
                                         }
                                     }
+                                    if (groupHasCppRoot(group))
+                                        cppInstalled = true;
                                     emit installProgress(QString("Installed %1 file(s) for %2")
                                                              .arg(copiedFiles)
                                                              .arg(originalName));
@@ -1575,6 +1594,7 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
                 planContext.modsPath = m_modsPathInternal;
                 planContext.gamePaksPath = m_gamePaksPath;
                 planContext.luaModsRoot = luaModsRoot;
+                planContext.cppModsRoot = cppModsRoot;
                 planContext.installName = QFileInfo(filePath).fileName();
                 const ModInstallPlanner::Result installPlan =
                     ModInstallPlanner::analyze(filePath, planContext);
@@ -1602,6 +1622,8 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
                             if (ModInstallPlanner::installGroup(group, selectedFiles, planned.leaf,
                                                                planned.prefix, &copiedFiles, &copyError)) {
                                 ++successCount;
+                                if (groupHasCppRoot(group))
+                                    cppInstalled = true;
                                 emit installProgress(QString("Installed %1 file(s) for %2")
                                                          .arg(copiedFiles)
                                                          .arg(originalName));
@@ -1660,6 +1682,15 @@ void ModManager::confirmModInstallation(const QVariantList& modMappings) {
                         break;
                     }
                 }
+            }
+        }
+
+        if (cppInstalled && !cppModsRoot.isEmpty()) {
+            const QString cppError = setAvaloniumCppModsPath(cppModsRoot);
+            if (!cppError.isEmpty()) {
+                emit installProgress(
+                    QStringLiteral("C++ mods were copied, but Avalonium.ini could not be updated: %1")
+                        .arg(cppError));
             }
         }
 
