@@ -8,7 +8,7 @@
 param(
     [string]$BuildDir     = "",
     [string]$QtBinDir     = "",
-    [string]$AppVersion   = "1.2.0.0",
+    [string]$AppVersion   = "1.3.0.0",
     [string]$OutputDir    = "",
     [switch]$SkipWindeployqt,
     [switch]$DebugMode
