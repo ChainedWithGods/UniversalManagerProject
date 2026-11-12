@@ -33,6 +33,8 @@ public:
 
     Q_INVOKABLE QString luaModsFolderForProfile(const QString& presetId) const;
 
+    Q_INVOKABLE QString cppModsFolderForProfile(const QString& presetId) const;
+
     Q_INVOKABLE bool profileFolderExists(const QString& presetId) const;
 
     static bool seedProfileFolderAt(const QString& folderPath, const QString& defaultModsDir,
