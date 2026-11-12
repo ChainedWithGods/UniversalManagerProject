@@ -15,6 +15,7 @@ Rectangle {
     property bool companionsExpanded: coreFiles.length === 0
     readonly property bool isLogicRoot: rootData && rootData.rootKind === "logic"
     readonly property bool isLuaRoot: rootData && rootData.rootKind === "lua"
+    readonly property bool isCppRoot: rootData && rootData.rootKind === "cpp"
     readonly property bool willCreate: rootData && rootData.create === true
     readonly property bool wrapInFolder: rootData && rootData.wrapInFolder === true
     readonly property string rootPath: rootData ? (rootData.rootPath || "") : ""
@@ -25,7 +26,7 @@ Rectangle {
         while (path.length > 1 && (path.endsWith("/") || path.endsWith("\\")))
             path = path.slice(0, path.length - 1)
         var bundle = String(bundleFolderName || "").trim()
-        if (bundle !== "" && !section.isLuaRoot)
+        if (bundle !== "" && !section.isLuaRoot && !section.isCppRoot)
             path += "/" + bundle
         if (rootData && rootData.wrapInFolder && folderName !== "")
             path += "/" + folderName
@@ -38,6 +39,10 @@ Rectangle {
         var luaMarker = lower.indexOf("/universal manager lua mods/")
         if (luaMarker >= 0) {
             return "Lua Mods/" + normalized.slice(luaMarker + "/universal manager lua mods/".length)
+        }
+        var cppMarker = lower.indexOf("/universal manager cpp mods/")
+        if (cppMarker >= 0) {
+            return "C++ Mods/" + normalized.slice(cppMarker + "/universal manager cpp mods/".length)
         }
         var marker = lower.indexOf("/content/paks/")
         if (marker < 0 && lower.indexOf("content/paks/") === 0)
@@ -111,7 +116,9 @@ Rectangle {
                     ? "qrc:/UniversalModManager/Lucide Icons/blocks.svg"
                     : (section.isLuaRoot
                         ? "qrc:/UniversalModManager/Lucide Icons/folder-code.svg"
-                        : "qrc:/UniversalModManager/Lucide Icons/folder.svg")
+                        : (section.isCppRoot
+                            ? "qrc:/UniversalModManager/Lucide Icons/binary.svg"
+                            : "qrc:/UniversalModManager/Lucide Icons/folder.svg"))
                 sourceSize: Qt.size(16, 16)
                 layer.enabled: true
                 layer.effect: ColorOverlay {
