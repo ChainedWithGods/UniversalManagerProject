@@ -13,6 +13,8 @@ public:
 
         QString luaModsRoot;
 
+        QString cppModsRoot;
+
         QString installName;
     };
 
