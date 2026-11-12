@@ -366,8 +366,9 @@ bool folderHasFilesOutside(const QString& path, const QSet<QString>& excludedDir
     return false;
 }
 
-QVariantList collectLuaFileEntries(const QString& sourceRoot, const QString& destRoot,
-                                   const QString& sourceRootName, bool skipUnrealModFiles)
+QVariantList collectModFileEntries(const QString& sourceRoot, const QString& destRoot,
+                                   const QString& sourceRootName, const QString& kind,
+                                   bool skipUnrealModFiles)
 {
     QVariantList entries;
     QDirIterator it(sourceRoot, QDir::Files, QDirIterator::Subdirectories);
@@ -376,8 +377,7 @@ QVariantList collectLuaFileEntries(const QString& sourceRoot, const QString& des
 
         if (skipUnrealModFiles && mmdetail::isUnrealModExtension(QFileInfo(filePath).suffix()))
             continue;
-        entries.append(makeFileEntry(filePath, sourceRoot, destRoot,
-                                     QStringLiteral("lua"), sourceRootName));
+        entries.append(makeFileEntry(filePath, sourceRoot, destRoot, kind, sourceRootName));
     }
     return entries;
 }
@@ -495,6 +495,90 @@ QVector<LuaInstallSpec> discoverLuaMods(const QString& rootPath,
     return specs;
 }
 
+const QString kCppRootName = QStringLiteral("C++ Mods");
+
+QString cppEntryDll(const QDir& modDir, const QString& name)
+{
+    if (modDir.exists(QStringLiteral("dlls/main.dll")))
+        return QStringLiteral("dlls/main.dll");
+    if (!name.isEmpty()
+        && modDir.exists(QStringLiteral("dlls/") + name + QStringLiteral(".dll")))
+        return QStringLiteral("dlls/") + name + QStringLiteral(".dll");
+    if (!name.isEmpty() && modDir.exists(name + QStringLiteral(".dll")))
+        return name + QStringLiteral(".dll");
+    return {};
+}
+
+struct CppInstallSpec {
+    QString modPath;
+    QString name;
+    bool rootLevel = false;
+};
+
+QVector<CppInstallSpec> discoverCppMods(const QString& rootPath,
+                                        const QSet<QString>& pakRootPaths,
+                                        const QString& fallbackName)
+{
+    QVector<CppInstallSpec> specs;
+
+    if (luaEntryScript(QDir(rootPath)).isEmpty()
+        && !cppEntryDll(QDir(rootPath), leafName(rootPath)).isEmpty()) {
+        CppInstallSpec spec;
+        spec.modPath = rootPath;
+        spec.rootLevel = true;
+        spec.name = fallbackName.trimmed().isEmpty()
+                        ? leafName(rootPath) : fallbackName.trimmed();
+        if (spec.name.isEmpty())
+            spec.name = QStringLiteral("C++ Mod");
+        specs.append(spec);
+        return specs;
+    }
+
+    QStringList dirs;
+    QDirIterator dirIt(rootPath, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (dirIt.hasNext())
+        dirs.append(QDir::cleanPath(dirIt.next()));
+
+    QSet<QString> qualifying;
+    for (const QString& dir : dirs) {
+        if (!luaEntryScript(QDir(dir)).isEmpty())
+            continue;
+        if (!cppEntryDll(QDir(dir), leafName(dir)).isEmpty())
+            qualifying.insert(normalizedForCompare(dir));
+    }
+    if (qualifying.isEmpty())
+        return specs;
+
+    for (const QString& dir : dirs) {
+        if (!qualifying.contains(normalizedForCompare(dir)))
+            continue;
+        bool ancestorQualifies = false;
+        QString parent = QFileInfo(dir).absolutePath();
+        while (isPathInside(rootPath, parent)
+               && normalizedForCompare(parent) != normalizedForCompare(rootPath)) {
+            if (qualifying.contains(normalizedForCompare(parent))) {
+                ancestorQualifies = true;
+                break;
+            }
+            parent = QFileInfo(parent).absolutePath();
+        }
+        if (ancestorQualifies)
+            continue;
+
+        const QString container = QFileInfo(dir).absolutePath();
+        if (pakRootPaths.contains(normalizedForCompare(container))
+            && folderHasUnrealModFiles(container))
+            continue;
+
+        CppInstallSpec spec;
+        spec.modPath = dir;
+        spec.name = leafName(dir);
+        specs.append(spec);
+    }
+
+    return specs;
+}
+
 }
 
 ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoot, const Context& context)
@@ -550,6 +634,7 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
     }
 
     const QString luaModsRoot = cleanPathInput(context.luaModsRoot);
+    const QString cppModsRoot = cleanPathInput(context.cppModsRoot);
     QSet<QString> pakRootPaths;
     for (const ArchiveRoot& root : archiveRoots)
         pakRootPaths.insert(normalizedForCompare(root.path));
@@ -558,6 +643,10 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
     if (!luaModsRoot.isEmpty())
         luaSpecs = discoverLuaMods(rootPath, pakRootPaths, context.installName);
 
+    QVector<CppInstallSpec> cppSpecs;
+    if (!cppModsRoot.isEmpty())
+        cppSpecs = discoverCppMods(rootPath, pakRootPaths, context.installName);
+
     QSet<QString> luaOwnedPaths;
     for (const LuaInstallSpec& spec : luaSpecs) {
 
@@ -565,6 +654,10 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
             luaOwnedPaths.insert(normalizedForCompare(spec.modPath));
         for (const QString& supportPath : spec.supportPaths)
             luaOwnedPaths.insert(normalizedForCompare(supportPath));
+    }
+    for (const CppInstallSpec& spec : cppSpecs) {
+        if (!spec.rootLevel)
+            luaOwnedPaths.insert(normalizedForCompare(spec.modPath));
     }
 
     for (int i = archiveRoots.size() - 1; i >= 0; --i) {
@@ -575,7 +668,7 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
             archiveRoots.removeAt(i);
     }
 
-    if (archiveRoots.isEmpty() && luaSpecs.isEmpty())
+    if (archiveRoots.isEmpty() && luaSpecs.isEmpty() && cppSpecs.isEmpty())
         return result;
 
     result.recognized = true;
@@ -603,7 +696,7 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
     result.valid = archiveRoots.isEmpty() ? true : !paksRoot.isEmpty();
     result.error = archiveRoots.isEmpty() ? QString() : error;
 
-    if (!result.valid && !hasLogicRoots && luaSpecs.isEmpty()) {
+    if (!result.valid && !hasLogicRoots && luaSpecs.isEmpty() && cppSpecs.isEmpty()) {
         result.recognized = false;
         result.error.clear();
         return result;
@@ -760,7 +853,7 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
         }
     }
 
-    if (coreByBase.isEmpty() && luaSpecs.isEmpty()) {
+    if (coreByBase.isEmpty() && luaSpecs.isEmpty() && cppSpecs.isEmpty()) {
         result.valid = false;
         result.error = QStringLiteral("No Unreal Engine mod files (.pak, .ucas, .utoc) were found in the archive.");
         return result;
@@ -807,7 +900,7 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
         builtGroups.append(group);
     }
 
-    if (builtGroups.isEmpty() && luaSpecs.isEmpty()) {
+    if (builtGroups.isEmpty() && luaSpecs.isEmpty() && cppSpecs.isEmpty()) {
         result.valid = false;
         result.error = QStringLiteral("No installable mod groups were found in the archive.");
         return result;
@@ -903,8 +996,8 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
         root["create"] = !QDir(luaModsRoot).exists();
         root["wrapInFolder"] = true;
 
-        const QVariantList core = collectLuaFileEntries(spec.modPath, luaModsRoot, spec.name,
-                                                        spec.rootLevel);
+        const QVariantList core = collectModFileEntries(spec.modPath, luaModsRoot, spec.name,
+                                                        QStringLiteral("lua"), spec.rootLevel);
         QVariantList companions;
         for (const QString& supportPath : spec.supportPaths) {
             QDirIterator it(supportPath, QDir::Files, QDirIterator::Subdirectories);
@@ -921,11 +1014,44 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
             builtGroups[targetGroup].files.append(value);
         for (const QVariant& value : companions)
             builtGroups[targetGroup].extraFiles.append(value);
-        if (spec.skippedDllMods > 0) {
+        if (spec.skippedDllMods > 0 && cppModsRoot.isEmpty()) {
             builtGroups[targetGroup].extraWarnings.append(
                 QStringLiteral("%1 C++ (DLL) mod folder(s) were not installed: the Lua runtime loads script mods only.")
                     .arg(spec.skippedDllMods));
         }
+    }
+
+    for (const CppInstallSpec& spec : cppSpecs) {
+        int targetGroup = -1;
+        for (int i = 0; i < builtGroups.size(); ++i) {
+            if (builtGroups.at(i).name.compare(spec.name, Qt::CaseInsensitive) == 0) {
+                targetGroup = i;
+                break;
+            }
+        }
+        if (targetGroup < 0) {
+            BuiltGroup group;
+            group.name = spec.name;
+            group.installMode = QStringLiteral("cpp");
+            builtGroups.append(group);
+            targetGroup = builtGroups.size() - 1;
+        }
+
+        QVariantMap root;
+        root["rootName"] = kCppRootName;
+        root["rootKind"] = QStringLiteral("cpp");
+        root["rootPath"] = cppModsRoot;
+        root["create"] = !QDir(cppModsRoot).exists();
+        root["wrapInFolder"] = true;
+
+        const QVariantList core = collectModFileEntries(spec.modPath, cppModsRoot, spec.name,
+                                                        QStringLiteral("cpp"), false);
+        root["coreFiles"] = core;
+        root["companionFiles"] = QVariantList();
+
+        builtGroups[targetGroup].roots.append(root);
+        for (const QVariant& value : core)
+            builtGroups[targetGroup].files.append(value);
     }
 
     QStringList globalWarnings;
@@ -938,7 +1064,8 @@ ModInstallPlanner::Result ModInstallPlanner::analyze(const QString& extractedRoo
     for (BuiltGroup& group : builtGroups) {
         for (QVariantMap& root : group.roots) {
 
-            if (root.value("rootKind").toString() == QStringLiteral("lua"))
+            const QString rootKind = root.value("rootKind").toString();
+            if (rootKind == QStringLiteral("lua") || rootKind == QStringLiteral("cpp"))
                 continue;
             const QVariantList core = root.value("coreFiles").toList();
             bool wrapInFolder = !core.isEmpty();
@@ -1052,10 +1179,11 @@ bool ModInstallPlanner::installGroup(const QVariantMap& group, const QStringList
             continue;
         }
 
-        const bool isLuaRoot = root.value("rootKind").toString() == QStringLiteral("lua");
+        const QString rootKind = root.value("rootKind").toString();
+        const bool isProfileRoot = rootKind == QStringLiteral("lua") || rootKind == QStringLiteral("cpp");
         QString destBase = destRoot;
 
-        if (!bundlePrefix.isEmpty() && !isLuaRoot)
+        if (!bundlePrefix.isEmpty() && !isProfileRoot)
             destBase = QDir(destBase).filePath(bundlePrefix);
         if (root.value("wrapInFolder").toBool() && !effectiveFolder.isEmpty())
             destBase = QDir(destBase).filePath(effectiveFolder);
@@ -1105,7 +1233,7 @@ bool ModInstallPlanner::installGroup(const QVariantMap& group, const QStringList
             }
         };
 
-        copyFiles(root.value("coreFiles").toList(), true, !isLuaRoot);
+        copyFiles(root.value("coreFiles").toList(), true, !isProfileRoot);
         copyFiles(root.value("companionFiles").toList(), false, false);
     }
 
