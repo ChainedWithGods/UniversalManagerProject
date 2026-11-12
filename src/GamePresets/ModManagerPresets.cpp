@@ -315,6 +315,11 @@ bool ModManager::applyPresetToCurrentState(const QVariantMap& preset) {
         setAvaloniumLuaModsPath(targetLuaModsPath);
     }
 
+    if (m_luaProfileManager && !presetId.isEmpty()) {
+        const QString cppRoot = m_luaProfileManager->cppModsFolderForProfile(presetId);
+        setAvaloniumCppModsPath(!cppRoot.isEmpty() && QDir(cppRoot).exists() ? cppRoot : QString());
+    }
+
     m_isLoading = wasLoading;
 
     if (!m_modsPath.isEmpty() && QDir(m_modsPath).exists()) {
