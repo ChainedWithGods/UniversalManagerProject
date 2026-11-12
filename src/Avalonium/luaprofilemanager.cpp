@@ -26,6 +26,7 @@ QStringList defaultModFolders()
 }
 
 constexpr const char* kProfilesFolderName = "Universal Manager Lua Mods";
+constexpr const char* kCppProfilesFolderName = "Universal Manager Cpp Mods";
 
 QString sanitizeFolderName(const QString& name)
 {
@@ -493,4 +494,21 @@ QString LuaProfileManager::luaModsFolderForProfile(const QString& presetId) cons
         return QDir::fromNativeSeparators(path);
     }
     return QString();
+}
+
+QString LuaProfileManager::cppModsFolderForProfile(const QString& presetId) const
+{
+    if (!m_modManager || presetId.trimmed().isEmpty()) {
+        return QString();
+    }
+    const QString dllDir = m_modManager->avaloniumDirectory();
+    if (dllDir.isEmpty()) {
+        return QString();
+    }
+    const QString folderName = folderNameForPresetId(presetId);
+    if (folderName.isEmpty()) {
+        return QString();
+    }
+    const QString root = QDir(dllDir).filePath(QString::fromLatin1(kCppProfilesFolderName));
+    return QDir::fromNativeSeparators(QDir(root).filePath(folderName));
 }
