@@ -547,6 +547,26 @@ namespace Avalonium::CppMods
                 }
             }
 
+            if (number == 0 && !text.empty() &&
+                EngineDiscovery::ResolveFNameIndex(state, text) < 0)
+            {
+                size_t end = text.size();
+                while (end > 0 && text[end - 1] >= '0' && text[end - 1] <= '9') --end;
+                if (end < text.size() && end > 0 && text[end - 1] == '_')
+                {
+                    uint64_t external = 0;
+                    for (size_t i = end; i < text.size(); ++i)
+                        external = external * 10 + static_cast<uint64_t>(text[i] - '0');
+                    const std::string base = text.substr(0, end - 1);
+                    if (external < 0xFFFF &&
+                        EngineDiscovery::ResolveFNameIndex(state, base) >= 0)
+                    {
+                        text = base;
+                        number = static_cast<uint32_t>(external + 1);
+                    }
+                }
+            }
+
             std::string detail;
             const int32_t index = EngineDiscovery::FindOrAddFNameIndex(state, text, &detail);
             if (index < 0) return false;
