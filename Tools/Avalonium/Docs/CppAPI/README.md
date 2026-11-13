@@ -87,7 +87,10 @@ AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t reque
 
 `Api.hpp` resolves it once from the loaded `Avalonium.dll`. The table is size- and
 version-stamped; the SDK refuses a table older or smaller than the one it was
-built against, and a mod reads only the fields its own headers describe.
+built against, and a mod reads only the fields its own headers describe. The
+table only grows: a runtime release appends callbacks, and a mod built against a
+newer SDK needs a runtime whose table is at least as large. Ship or require the
+matching runtime with the mod.
 
 | Callback | Thread | When |
 | :--- | :--- | :--- |
@@ -102,8 +105,8 @@ The mod object carries `ModName`, `ModVersion`, `ModDescription`, `ModAuthors` a
 `ModIntendedSDKVersion`, used for the load log; `GetModPath()` returns the mod's
 own folder.
 
-`on_ui_init` exists for source shape but is not invoked. The native API does not
-expose the ImGui context.
+`on_ui_init` exists for source shape but is not invoked. ImGui windows are built
+from a render callback registered with `RC::ImGui::RegisterRender` (section 3).
 
 ### Threading rules
 
@@ -130,12 +133,12 @@ The SDK is header-only; `Avalonium/Avalonium.hpp` includes the whole surface:
 | `SdkApi.h` | SDK generator runtime table (`AvaloniumGetSdkApi`); `Avalonium.hpp` does not include it. |
 | `Api.hpp` | Runtime version, engine version, game name, availability. |
 | `Value.hpp` | `FString`, `FName`, `Value`. |
-| `Unreal.hpp` | `UObject`, `UClass`, `UStruct`, `UFunction`, calls, struct helpers, arrays, maps, sets. |
+| `Unreal.hpp` | `UObject`, `UClass`, `UStruct`, `UFunction`, calls, struct helpers, arrays, maps, sets, data table rows. |
 | `ModBase.hpp` | `CppUserModBase` lifecycle. |
 | `Hooks.hpp` | Native and interpreted UFunction hooks and argument/result access. |
 | `Keys.hpp` | Key binds. |
 | `Widgets.hpp` | Widget kit, object construction, UMG delegate bindings. |
-| `ImGui.hpp` | ImGui context, allocators and render-callback registration. |
+| `ImGui.hpp` | ImGui context, allocators, render-callback registration, texture views. |
 | `ImGuiHook.hpp` | Includes `imgui.h` and binds the mod's ImGui copy to the runtime's context and allocators. |
 | `GameThread.hpp` | Game-thread queue, frame count, delta seconds. |
 | `Log.hpp` | `RC::Output` and `Avalonium::Log*`. |
@@ -298,6 +301,72 @@ contain spaces. A generated SDK may sanitize the identifier for C++
 (`Enable Player Control` becomes `Enable_Player_Control`); lookups and reflected
 calls take the engine name.
 
+### Data tables
+
+`RC::Unreal::GetDataTableRow` returns the live row buffer for a row name, or null:
+
+```cpp
+using namespace RC::Unreal;
+
+UObject* table = UObject::FindObject("/Game/Project/Items/ItemTable.ItemTable");
+void* row = RC::Unreal::GetDataTableRow(table, "Shotgun");
+```
+
+The layout of that buffer is the table's `RowStruct`, so the row is read through
+the struct's own reflected properties. `UStruct::GetProperties()` returns each
+member's name, type, offset and size:
+
+```cpp
+UObject* rowStruct = table->GetProperty<UObject*>("RowStruct");
+for (const RC::Unreal::PropertyInfo& property :
+     static_cast<RC::Unreal::UStruct*>(rowStruct)->GetProperties())
+{
+    void* field = static_cast<uint8_t*>(row) + property.Offset;
+    // property.TypeName tells the member type; property.ElementSize its size
+}
+```
+
+- Game thread only. The buffer points into table-owned storage, is read-only, and
+  stays valid while the table owns the row. Do not keep pointers into it across
+  level changes or table reloads.
+- Row names are the engine FName text. The runtime also accepts a name the engine
+  renders with an instance suffix: `Foo_0` resolves the pool name `Foo` with
+  instance number 1, which is how duplicate FNames are displayed.
+- A row name that names no row returns null. A member with no value reads as a
+  null object pointer or zero bytes.
+
+Example: draw the first icon-like object member of a row.
+
+```cpp
+RC::Unreal::UObject* FindRowIcon(RC::Unreal::UObject* table, const char* rowName)
+{
+    void* row = RC::Unreal::GetDataTableRow(table, rowName);
+    if (!row) return nullptr;
+
+    auto lower = [](std::string text)
+    {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c)
+                       { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+
+    RC::Unreal::UObject* rowStruct = table->GetProperty<RC::Unreal::UObject*>("RowStruct");
+    for (const RC::Unreal::PropertyInfo& property :
+         static_cast<RC::Unreal::UStruct*>(rowStruct)->GetProperties())
+    {
+        if (lower(property.Name).find("icon") == std::string::npos) continue;
+        if (lower(property.TypeName).find("object") == std::string::npos) continue;
+
+        void* icon = nullptr;
+        std::memcpy(&icon, static_cast<uint8_t*>(row) + property.Offset, sizeof(icon));
+        auto* object = static_cast<RC::Unreal::UObject*>(icon);
+        if (object && object->IsValid() && object->IsA("Texture2D")) return object;
+    }
+    return nullptr;
+}
+```
+
 ### Widget events
 
 ```cpp
@@ -382,6 +451,41 @@ RC::ImGui::UnregisterRender(id);
 
 `RC::ImGui::Context()` and `RC::ImGui::Available()` report the shared context;
 `GetAllocatorFunctions` exposes the runtime allocators for advanced use.
+
+### Textures
+
+`RC::ImGui::TextureId` maps a live `UTexture2D` to the texture view the overlay
+renderer draws with:
+
+```cpp
+uint64_t id = RC::ImGui::TextureId(texture);
+if (id) ImGui::Image(static_cast<ImTextureID>(id), ImVec2(64.0f, 64.0f));
+```
+
+- Render thread. The runtime resolves the view once per texture and caches it; the
+  returned value stays valid while the overlay lives.
+- On D3D11 the value is an `ID3D11ShaderResourceView*`. On D3D12 it is a GPU
+  descriptor handle in the overlay's shader-visible SRV heap. Both are consumed by
+  the runtime's ImGui context.
+- 0 means no view: the pointer is not a live `Texture2D`, the overlay backend is
+  neither D3D11 nor D3D12, or the engine has no render resource for that texture.
+- The value is backend data for the runtime's ImGui context. Use it inside the
+  runtime's frame, not as a handle for any other renderer.
+- `ImGui::Image` converts coordinates. A custom draw-list call needs screen
+  coordinates, so take the position from `ImGui::GetCursorScreenPos()` rather than
+  `GetCursorPos()`.
+- Icons are not always square. Read the source size with the reflected
+  `Blueprint_GetSizeX` and `Blueprint_GetSizeY` calls on the game thread, then fit
+  the draw rect to keep the aspect ratio:
+
+```cpp
+int32_t width = texture->Call<int32_t>("Blueprint_GetSizeX");
+int32_t height = texture->Call<int32_t>("Blueprint_GetSizeY");
+float scale = 64.0f / std::max(width, height);
+```
+
+- The API reads textures the game already loaded. It does not create, upload or
+  modify texture assets.
 
 ### Arrays
 
@@ -613,6 +717,11 @@ The API deliberately exposes no engine structure layout:
 - `FString` is a UTF-8 string value, not the engine's `TArray<TCHAR>`.
 - Property offsets, element sizes and container metadata come from the property
   itself.
+- A data table row is found through the table's reflected `RowStruct`: the runtime
+  reads the row map that follows it and compares FName indices and instance
+  numbers, not rendered text.
+- A texture view is resolved from the live object graph and the active D3D11 or
+  D3D12 device, not from engine offsets.
 - `UFunction::Func`, `UFunction` flags and the FFrame layout are discovered or taken
   from constants that are identical across the supported engine trees.
 - Class and function lookup is by name and reflection, never by a hardcoded address.
@@ -643,6 +752,11 @@ therefore owns the version-specific structure.
   the engine; text properties can otherwise be copied as raw bytes.
 - New widget Blueprint classes and new texture assets cannot be created. Mods compose
   the engine's native widget classes and reuse existing textures, fonts and brushes.
+- Texture views cover D3D11 and D3D12 textures the engine already prepared for
+  rendering. A texture without a render resource, or an overlay backend other than
+  D3D11 or D3D12, returns 0.
+- Data table rows are live table-owned buffers. Read them only; the API does not
+  copy or write them.
 - Constructed objects are not GC-rooted by the runtime. Attach them to a live outer,
   property or viewport to keep them alive.
 - C++ ImGui uses the runtime's ImGui version and build configuration; a mod

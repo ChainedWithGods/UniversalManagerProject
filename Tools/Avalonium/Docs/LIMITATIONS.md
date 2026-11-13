@@ -59,7 +59,11 @@ C++ mod limits:
   `RC::Widgets::SetText`; other text values are copied as raw bytes.
 - New widget Blueprint classes and new texture assets cannot be created. Mods
   compose the engine's native widget classes and reuse existing textures, fonts,
-  brushes and styles.
+  brushes and styles. Texture views are D3D11 views or D3D12 descriptors the engine
+  already created; a texture without a render resource, or an overlay backend other
+  than D3D11 or D3D12, yields 0.
+- Data table rows are live table-owned buffers. The API reads a row through the
+  table's `RowStruct`; it does not copy or write the row.
 - Constructed objects are not GC-rooted by the runtime. A mod attaches them to a
   live outer, property or viewport to keep them alive.
 - C++ ImGui shares the runtime's context, so a mod must compile the same ImGui
