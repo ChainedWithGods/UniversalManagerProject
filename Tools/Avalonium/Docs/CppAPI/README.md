@@ -230,6 +230,7 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 | `UObject::GetObjectsOfClass(class, vector)` | Live instances. |
 | `UObject::GetObjectCount()`, `GetObjectByIndex(index)` | Walks the object array. |
 | `IsValid()` | Readability test for the object pointer. |
+| `IsPendingKill()` | True when the engine has scheduled the object for destruction (pending kill on UE4, garbage on UE5). Reflected calls on it act as no-ops. |
 | `GetName`, `GetFullName`, `GetPathName` | `FString` copies. |
 | `GetClass`, `GetOuter`, `GetSuperStruct` | Class or outer pointers. |
 | `IsA(name)` | Name-based class chain test. |
@@ -285,10 +286,11 @@ object->Call("SetSomething", true);
 
 Arguments are positional and matched to the function's parameter properties in
 declaration order. Missing trailing arguments keep the frame's zero. One return
-value is read back; out parameters other than the return value are not returned.
+value is read back.
 
-`CallValues` takes the same arguments as `Value`s, which is how structs, objects,
-names and strings are passed:
+`CallOutValues` reads named out parameters from the caller frame after the call.
+Every name must exist on the function; a missing name fails before the engine runs
+the function.
 
 ```cpp
 RC::Unreal::Value result;
@@ -296,6 +298,15 @@ std::vector<RC::Unreal::Value> args{
     RC::Unreal::Value::Object(world),
     RC::Unreal::Value::Struct(&transform, sizeof(transform))};
 object->CallValues("SpawnSomething", args, &result);
+```
+
+```cpp
+std::vector<RC::Unreal::Value> outValues;
+if (object->CallOutValues("SpawnSomething", args, {"SpawnedActor"}, outValues) &&
+    !outValues.empty())
+{
+    auto* spawned = static_cast<RC::Unreal::UObject*>(outValues.front().AsObject());
+}
 ```
 
 `ProcessEvent(UFunction*, void*)` is available for mods that build an engine-layout
@@ -670,6 +681,30 @@ interpreted function the interpreter hook carries the call, so both routes into
 Blueprint bytecode are observed. Both hooks identify the UFunction from the engine
 frame, not from a per-hook signature.
 
+### Vetoing a call
+
+`Hook::RegisterVeto` installs a native-entry veto. The callback returns false to
+skip the engine function for that invocation; the runtime does not call the
+original and does not run post callbacks.
+
+```cpp
+static bool KeepActorAlive(void* user, void* object, void* function, void* frame, void* result)
+{
+    auto* mod = static_cast<MyMod*>(user);
+    return !mod->IsProtected(static_cast<Unreal::UObject*>(object));
+}
+
+uint32_t vetoId = Hook::RegisterVeto("Actor", "K2_DestroyActor", &KeepActorAlive, this);
+```
+
+`Hook::RegisterAddressVeto(target, veto, user)` vetoes a function that never passes
+through a UFunction entry. The callback receives the target's first three argument
+registers as `object`, `frame` and `result`. Resolve the target from the module and
+verify it for the engine build the mod targets.
+
+A veto is a hard skip. The engine and the calling code continue as if the function
+ran, so only veto a call whose cancellation leaves a valid state.
+
 Hook limits:
 
 - Native-entry hooks cover native UFunctions. Interpreted UFunctions are answered by
@@ -679,8 +714,10 @@ Hook limits:
   `ProcessLocalScriptFunction`) cannot be hooked as ordinary native functions.
 - At most 128 unique native entry points can be hooked during one process lifetime.
   Blueprint hooks do not consume those slots.
-- Out parameters reach a post callback through `GetArg`, but the API does not write
-  them back through the caller's out-parameter list.
+- Out parameters that the engine copies back through the caller's out-parameter
+  list are read with `CallOutValues` after the call. A hook's `GetArg` reads the
+  engine frame, which for some Blueprint functions holds the function's locals
+  instead of the caller's out storage.
 - A Blueprint hook observes the function the interpreter actually executes. A base
   BlueprintImplementableEvent that a class does not implement has no bytecode, so the
   engine returns before the interpreter runs it; register the hook on the class that
@@ -752,7 +789,11 @@ therefore owns the version-specific structure.
   Map and set mutation uses the engine's Blueprint container libraries. Struct
   keys are compared by their raw bytes for lookup, so a padding difference can
   hide a match, and a map key cannot be renamed in place.
-- Reflected calls return one value; out parameters are not returned.
+- A pending-kill object stays readable, but reflected calls on it return without
+  running. Check `IsPendingKill` before acting on a cached pointer.
+- A hook veto skips the original call while the caller continues as if it ran.
+  Use it only when skipping leaves a valid state. Address vetoes are bound to one
+  engine build.
 - No standalone FText value constructor. `RC::Widgets::SetText` builds one through
   the engine; text properties can otherwise be copied as raw bytes.
 - New widget Blueprint classes and new texture assets cannot be created. Mods compose

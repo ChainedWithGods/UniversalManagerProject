@@ -50,6 +50,13 @@ C++ mod limits:
   parameter order. A table supplied for an out parameter is also filled under the
   parameter name; structure parameters copy their exposed members into it, and array
   or set parameters fill it when the value is table-shaped.
+- C++ `CallOutValues` reads named out parameters from the caller frame. A Blueprint
+  function that writes its out value only to the engine's local frame reads null.
+- A pending-kill object remains readable and keeps its property values, but reflected
+  calls on it return without running. The C++ API exposes this as `IsPendingKill`.
+- A native hook veto skips the engine function and the caller continues as if it ran.
+  The C++ API offers per-UFunction and raw-address vetoes; an address veto is tied to
+  one engine build, and a skip must leave a valid state.
 - Native non-UFUNCTION calls are the mod's declaration: the runtime resolves an
   export, pattern or vtable slot and returns the address, and the mod calls it
   with the real signature on the game thread. A wrong pattern, slot or signature

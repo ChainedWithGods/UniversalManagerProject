@@ -383,7 +383,59 @@ Why it matters:
 
 ---
 
-## 6. One DLL, Every Engine Version
+## 6. Destruction Guard
+
+Some games spawn an actor and destroy it again during its own initialization. A
+mod that needs the actor can veto that destroy for the duration of the spawn.
+
+```cpp
+class MyMod final : public RC::CppUserModBase
+{
+  public:
+    void on_unreal_init() override
+    {
+        uint32_t id = RC::Hook::RegisterVeto("Actor", "K2_DestroyActor",
+                                             &MyMod::OnDestroy, this);
+        if (!id) LogError("destroy veto unavailable");
+    }
+
+    bool SpawnAndKeep(RC::Unreal::UObject* state, std::vector<RC::Unreal::Value>& args)
+    {
+        std::vector<RC::Unreal::Value> out;
+        spawning = true;
+        const bool ok = state->CallOutValues("Spawn Item Ex", args, {"act"}, out);
+        spawning = false;
+        if (!ok || out.empty()) return false;
+
+        auto* actor = static_cast<RC::Unreal::UObject*>(out.front().AsObject());
+        return actor && !actor->IsPendingKill();
+    }
+
+  private:
+    static bool OnDestroy(void* user, void* object, void* function, void* frame, void* result)
+    {
+        auto* mod = static_cast<MyMod*>(user);
+        return !mod->spawning;
+    }
+
+    bool spawning = false;
+};
+```
+
+`RegisterVeto` blocks a UFunction call. `RegisterAddressVeto` does the same for a
+function that never passes through a UFunction entry; resolve its address from the
+module for the engine build you target.
+
+Why it matters:
+
+- The out value tells you what the spawn actually produced.
+- `IsPendingKill` tells you whether the game already scheduled the actor for
+  destruction, before any other call silently does nothing.
+- The veto only blocks the game's cleanup while the mod holds the spawn window.
+
+---
+
+## 7. One DLL, Every Engine Version
 
 A single binary can report and adapt to the engine it runs on:
 

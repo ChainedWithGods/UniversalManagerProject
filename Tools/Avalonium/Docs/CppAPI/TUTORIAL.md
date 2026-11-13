@@ -142,6 +142,9 @@ bool IsUsable(RC::Unreal::UObject* object)
 
 Other rules that saved time:
 
+- `IsPendingKill()` is the engine's own destruction state. A pending-kill object
+  still passes `IsValid()` and keeps its property values, but reflected calls on it
+  return without running. Check it before using a cached actor.
 - After a level change, the old world, state and controller can stay readable.
   Re-resolve them per level instead of caching pointers forever.
 - `GetObjectsOfClass` returns objects oldest first. The live instance is usually
@@ -283,24 +286,23 @@ object->CallValues("Some Function", args, &result);
 
 Blueprint functions keep their engine name, spaces included.
 
-Out parameters are the catch: `CallValues` returns only the function's return
-value. To read an out value, build the frame yourself:
+Out parameters use `CallOutValues`. Every name must exist on the function; a
+missing name fails before the engine runs it:
 
 ```cpp
-const AvaloniumModApi* api = Avalonium::Detail::Api();
-RC::Unreal::UFunction* function = object->FindFunction("Spawn Item Ex");
-std::vector<uint8_t> frame(frameSize, 0);
-
-api->set_function_argument(function->Address(), frame.data(), "ItemName", &nameValue.Raw());
-api->process_event(object->Address(), function->Address(), frame.data());
-
-RC::Unreal::Value out;
-api->get_function_argument(function->Address(), frame.data(), "act", &out.RawMutable());
-RC::Unreal::UObject* actor = static_cast<RC::Unreal::UObject*>(out.AsObject());
+std::vector<RC::Unreal::Value> outValues;
+if (object->CallOutValues("Spawn Item Ex", args, {"act"}, outValues) &&
+    !outValues.empty())
+{
+    auto* actor = static_cast<RC::Unreal::UObject*>(outValues.front().AsObject());
+}
 ```
 
 This is how a spawn call can be verified: a null out actor means the game placed
-nothing, so the mod can fall back to another action instead of reporting success.
+nothing. Some Blueprint functions write an out value into the engine's local frame
+instead of the caller's storage; the call still succeeds but the value reads as
+null. A post hook on the same UFunction can read the frame's local with `GetArg`
+as a second source.
 
 Names that render with an instance suffix are handled: passing `Foo_0` writes the
 engine FName `Foo` with number 1, so the game finds the row the list showed.
@@ -318,6 +320,21 @@ Detect it at scan time instead of guessing:
 - Entries that exist only as DataTable rows may only be given.
 - Store a `CanSpawn` flag per row, make the UI give for the rest, and verify the
   spawn result as above.
+- Read the out actor and check `IsPendingKill()`. An actor the game destroyed during
+  spawn is still readable but every call on it is a no-op.
+
+Some games tear down an actor during its own spawn. A native veto on the destroy
+call can block that, but only while the spawn is in progress:
+
+```cpp
+static bool WhileSpawning(void* user, void* object, void* function, void* frame, void* result)
+{
+    auto* mod = static_cast<MyMod*>(user);
+    return !mod->IsSpawning();
+}
+
+Hook::RegisterVeto("Actor", "K2_DestroyActor", &WhileSpawning, this);
+```
 
 ---
 
