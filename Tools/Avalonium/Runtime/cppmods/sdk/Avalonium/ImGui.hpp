@@ -50,4 +50,10 @@ namespace RC::ImGui
         const AvaloniumModApi* api = Avalonium::Detail::Api();
         return api && api->set_imgui_input_active && api->set_imgui_input_active(id, active);
     }
+
+    inline uint64_t TextureId(void* texture)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        return (api && api->get_imgui_texture) ? api->get_imgui_texture(texture) : 0;
+    }
 }

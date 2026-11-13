@@ -1,4 +1,9 @@
 #include "stdafx.h"
+#include "d3d12hook_api.h"
+
+#include <atomic>
+#include <mutex>
+#include <vector>
 
 namespace hooks { void Remove(); }
 
@@ -44,6 +49,7 @@ namespace d3d12hook {
     static ULONGLONG              gLastRejectedWindowLogTick = 0;
     static ULONGLONG              gLastDx12ActivityTick = 0;
 
+    // Some engines alternate between several direct queues every frame; only
     // report switches to queues we have not seen before.
     static constexpr UINT         kRecentDirectQueueCapacity = 8;
     static ID3D12CommandQueue*    gRecentDirectQueues[kRecentDirectQueueCapacity] = {};
@@ -63,6 +69,173 @@ namespace d3d12hook {
     static void NoteDx12Activity()
     {
         gLastDx12ActivityTick = GetTickCount64();
+    }
+
+    // ---------------------------------------------------------------------
+    // Overlay SRV heap
+    //
+    // The ImGui DX12 backend binds a GPU descriptor handle per draw, so every
+    // texture drawn through it needs a descriptor in the heap that Present
+    // binds. The heap is shared by the font atlas and any mod texture view.
+    // ---------------------------------------------------------------------
+    static constexpr UINT kSrvHeapCapacity = 4096;
+    static std::mutex gSrvMutex;
+    static UINT gSrvNextSlot = 0;
+    static std::vector<UINT> gSrvFreeSlots;
+    static UINT gSrvSlotSize = 0;
+    static uint32_t gTextureEpoch = 1;
+
+    static void ResetSrvSlots()
+    {
+        std::lock_guard<std::mutex> lock(gSrvMutex);
+        gSrvNextSlot = 0;
+        gSrvFreeSlots.clear();
+    }
+
+    static bool AllocateSrvSlot(D3D12_CPU_DESCRIPTOR_HANDLE* cpu,
+                                D3D12_GPU_DESCRIPTOR_HANDLE* gpu)
+    {
+        if (!gDevice || !gHeapSRV || gSrvSlotSize == 0 || !cpu || !gpu) return false;
+
+        std::lock_guard<std::mutex> lock(gSrvMutex);
+        UINT slot = 0;
+        if (!gSrvFreeSlots.empty())
+        {
+            slot = gSrvFreeSlots.back();
+            gSrvFreeSlots.pop_back();
+        }
+        else if (gSrvNextSlot < kSrvHeapCapacity)
+        {
+            slot = gSrvNextSlot++;
+        }
+        else
+        {
+            return false;
+        }
+
+        *cpu = gHeapSRV->GetCPUDescriptorHandleForHeapStart();
+        cpu->ptr += static_cast<SIZE_T>(slot) * gSrvSlotSize;
+        *gpu = gHeapSRV->GetGPUDescriptorHandleForHeapStart();
+        gpu->ptr += static_cast<UINT64>(slot) * gSrvSlotSize;
+        return true;
+    }
+
+    static void FreeSrvSlot(D3D12_CPU_DESCRIPTOR_HANDLE cpu)
+    {
+        if (!gHeapSRV || gSrvSlotSize == 0) return;
+        const SIZE_T base = gHeapSRV->GetCPUDescriptorHandleForHeapStart().ptr;
+        if (cpu.ptr < base) return;
+        const UINT slot = static_cast<UINT>((cpu.ptr - base) / gSrvSlotSize);
+        if (slot >= kSrvHeapCapacity) return;
+
+        std::lock_guard<std::mutex> lock(gSrvMutex);
+        gSrvFreeSlots.push_back(slot);
+    }
+
+    static void ImGuiSrvAlloc(ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* cpu,
+                              D3D12_GPU_DESCRIPTOR_HANDLE* gpu)
+    {
+        if (!AllocateSrvSlot(cpu, gpu))
+        {
+            cpu->ptr = 0;
+            gpu->ptr = 0;
+        }
+    }
+
+    static void ImGuiSrvFree(ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu,
+                             D3D12_GPU_DESCRIPTOR_HANDLE)
+    {
+        FreeSrvSlot(cpu);
+    }
+
+    static DXGI_FORMAT ViewableFormat(DXGI_FORMAT format)
+    {
+        switch (format)
+        {
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case DXGI_FORMAT_BC1_TYPELESS: return DXGI_FORMAT_BC1_UNORM_SRGB;
+        case DXGI_FORMAT_BC2_TYPELESS: return DXGI_FORMAT_BC2_UNORM_SRGB;
+        case DXGI_FORMAT_BC3_TYPELESS: return DXGI_FORMAT_BC3_UNORM_SRGB;
+        case DXGI_FORMAT_BC7_TYPELESS: return DXGI_FORMAT_BC7_UNORM_SRGB;
+        default: return format;
+        }
+    }
+
+    static uint64_t CreateTextureViewFromResource(void* resourcePointer)
+    {
+        if (!gDx12BackendInitialized || !gDevice || !gHeapSRV || !resourcePointer) return 0;
+
+        auto* resource = static_cast<ID3D12Resource*>(resourcePointer);
+        D3D12_RESOURCE_DESC desc{};
+        __try
+        {
+            desc = resource->GetDesc();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return 0;
+        }
+
+        if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+            desc.SampleDesc.Count != 1 || desc.MipLevels == 0)
+        {
+            return 0;
+        }
+
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu{};
+        if (!AllocateSrvSlot(&cpu, &gpu)) return 0;
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.Format = ViewableFormat(desc.Format);
+        if (desc.DepthOrArraySize > 1)
+        {
+            view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+            view.Texture2DArray.MostDetailedMip = 0;
+            view.Texture2DArray.MipLevels = desc.MipLevels;
+            view.Texture2DArray.FirstArraySlice = 0;
+            view.Texture2DArray.ArraySize = desc.DepthOrArraySize;
+            view.Texture2DArray.PlaneSlice = 0;
+            view.Texture2DArray.ResourceMinLODClamp = 0.0f;
+        }
+        else
+        {
+            view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            view.Texture2D.MostDetailedMip = 0;
+            view.Texture2D.MipLevels = desc.MipLevels;
+            view.Texture2D.PlaneSlice = 0;
+            view.Texture2D.ResourceMinLODClamp = 0.0f;
+        }
+
+        __try
+        {
+            gDevice->CreateShaderResourceView(resource, &view, cpu);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            FreeSrvSlot(cpu);
+            return 0;
+        }
+
+        return gpu.ptr;
+    }
+
+    bool TextureBridgeReady()
+    {
+        return gDx12BackendInitialized && gDevice && gHeapSRV;
+    }
+
+    uint32_t TextureEpoch()
+    {
+        return gTextureEpoch;
+    }
+
+    uint64_t CreateTextureView(void* resource)
+    {
+        return CreateTextureViewFromResource(resource);
     }
 
     static void ReleaseCandidateCommandQueue()
@@ -239,6 +412,8 @@ namespace d3d12hook {
         {
             gHeapSRV->Release();
             gHeapSRV = nullptr;
+            ++gTextureEpoch;
+            ResetSrvSlots();
         }
 
         ReleaseFrameContexts();
@@ -531,8 +706,16 @@ namespace d3d12hook {
             }
 
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            heapDesc.NumDescriptors = kSrvHeapCapacity;
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             hr = gDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&gHeapSRV));
+            if (SUCCEEDED(hr))
+            {
+                gSrvSlotSize = gDevice->GetDescriptorHandleIncrementSize(
+                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                ResetSrvSlots();
+                ++gTextureEpoch;
+            }
             if (FAILED(hr)) {
                 LogHRESULT("CreateDescriptorHeap SRV", hr);
                 ResetState(false, false);
@@ -585,6 +768,8 @@ namespace d3d12hook {
                 initInfo.RTVFormat = desc.BufferDesc.Format;
                 initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
                 initInfo.SrvDescriptorHeap = gHeapSRV;
+                initInfo.SrvDescriptorAllocFn = &ImGuiSrvAlloc;
+                initInfo.SrvDescriptorFreeFn = &ImGuiSrvFree;
                 initInfo.LegacySingleSrvCpuDescriptor = gHeapSRV->GetCPUDescriptorHandleForHeapStart();
                 initInfo.LegacySingleSrvGpuDescriptor = gHeapSRV->GetGPUDescriptorHandleForHeapStart();
                 gDx12BackendInitialized = ImGui_ImplDX12_Init(&initInfo);
@@ -830,8 +1015,16 @@ namespace d3d12hook {
             }
 
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            heapDesc.NumDescriptors = kSrvHeapCapacity;
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             hr = gDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&gHeapSRV));
+            if (SUCCEEDED(hr))
+            {
+                gSrvSlotSize = gDevice->GetDescriptorHandleIncrementSize(
+                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                ResetSrvSlots();
+                ++gTextureEpoch;
+            }
             if (FAILED(hr)) {
                 LogHRESULT("CreateDescriptorHeap SRV", hr);
                 ResetState(false, false);
@@ -884,6 +1077,8 @@ namespace d3d12hook {
                 initInfo.RTVFormat = desc.BufferDesc.Format;
                 initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
                 initInfo.SrvDescriptorHeap = gHeapSRV;
+                initInfo.SrvDescriptorAllocFn = &ImGuiSrvAlloc;
+                initInfo.SrvDescriptorFreeFn = &ImGuiSrvFree;
                 initInfo.LegacySingleSrvCpuDescriptor = gHeapSRV->GetCPUDescriptorHandleForHeapStart();
                 initInfo.LegacySingleSrvGpuDescriptor = gHeapSRV->GetGPUDescriptorHandleForHeapStart();
                 gDx12BackendInitialized = ImGui_ImplDX12_Init(&initInfo);
@@ -1247,4 +1442,19 @@ namespace d3d12hook {
     {
         return gInitialized;
     }
+}
+
+extern "C" bool D3D12Hook_TextureBridgeReady()
+{
+    return d3d12hook::TextureBridgeReady();
+}
+
+extern "C" uint32_t D3D12Hook_TextureEpoch()
+{
+    return d3d12hook::TextureEpoch();
+}
+
+extern "C" uint64_t D3D12Hook_CreateTextureView(void* resource)
+{
+    return d3d12hook::CreateTextureView(resource);
 }

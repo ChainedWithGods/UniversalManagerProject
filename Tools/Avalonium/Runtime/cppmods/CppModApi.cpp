@@ -12,6 +12,11 @@
 
 #include <imgui.h>
 
+#include <d3d11.h>
+#include <d3d12.h>
+
+#include "d3d12hook_api.h"
+
 #include "../console/ConsoleInternal.h"
 #include "../core/BlueprintDiscovery.h"
 #include "../core/EngineDiscovery.h"
@@ -28,6 +33,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -779,6 +785,290 @@ namespace Avalonium::CppMods
         {
             return ImGuiRender::SetInputActive(id, active);
         }
+
+        bool ModuleImageSize(HMODULE module, uintptr_t& base, size_t& size)
+        {
+            if (!module) return false;
+            base = reinterpret_cast<uintptr_t>(module);
+            auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(module);
+            if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
+            auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+            if (!nt || nt->Signature != IMAGE_NT_SIGNATURE) return false;
+            size = nt->OptionalHeader.SizeOfImage;
+            return true;
+        }
+
+        ID3D11ShaderResourceView* QueryD3D11ResourceView(uintptr_t candidate)
+        {
+            ID3D11ShaderResourceView* view = nullptr;
+            __try
+            {
+                auto* unknown = reinterpret_cast<IUnknown*>(candidate);
+                if (FAILED(unknown->QueryInterface(__uuidof(ID3D11ShaderResourceView),
+                                                   reinterpret_cast<void**>(&view))))
+                {
+                    view = nullptr;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                view = nullptr;
+            }
+            return view;
+        }
+
+        ID3D11ShaderResourceView* FindD3D11TextureView(void* texture)
+        {
+            static std::mutex cacheMutex;
+            static std::unordered_map<void*, ID3D11ShaderResourceView*> cache;
+            {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                const auto found = cache.find(texture);
+                if (found != cache.end()) return found->second;
+            }
+
+            uintptr_t d3d11Base = 0;
+            uintptr_t gameBase = 0;
+            size_t d3d11Size = 0;
+            size_t gameSize = 0;
+            if (!ModuleImageSize(GetModuleHandleA("d3d11.dll"), d3d11Base, d3d11Size) ||
+                !ModuleImageSize(GetModuleHandleA(nullptr), gameBase, gameSize))
+            {
+                return nullptr;
+            }
+
+            std::vector<std::pair<uintptr_t, int>> pending;
+            std::unordered_set<uintptr_t> visited;
+            pending.emplace_back(reinterpret_cast<uintptr_t>(texture), 0);
+            size_t budget = 192;
+            while (!pending.empty() && budget-- > 0)
+            {
+                const auto [address, depth] = pending.back();
+                pending.pop_back();
+                if (depth > 3 || !visited.insert(address).second) continue;
+
+                uint8_t buffer[0x100] = {};
+                if (!SafeMem_Read(reinterpret_cast<void*>(address), buffer, sizeof(buffer)))
+                    continue;
+
+                for (int offset = 0x8; offset <= 0xF8; offset += 8)
+                {
+                    uintptr_t candidate = 0;
+                    std::memcpy(&candidate, buffer + offset, sizeof(candidate));
+                    if (candidate < 0x10000 || candidate > 0x7FFFFFFFFFFF) continue;
+
+                    uintptr_t vtable = 0;
+                    if (!SafeMem_Read(reinterpret_cast<void*>(candidate), &vtable,
+                                      sizeof(vtable)))
+                        continue;
+
+                    if (vtable >= d3d11Base && vtable < d3d11Base + d3d11Size)
+                    {
+                        if (ID3D11ShaderResourceView* view =
+                                QueryD3D11ResourceView(candidate))
+                        {
+                            std::lock_guard<std::mutex> lock(cacheMutex);
+                            cache[texture] = view;
+                            return view;
+                        }
+                    }
+                    else if (depth < 3 && vtable >= gameBase && vtable < gameBase + gameSize)
+                    {
+                        pending.emplace_back(candidate, depth + 1);
+                    }
+                }
+            }
+            return nullptr;
+        }
+
+        ID3D12Resource* QueryD3D12Resource(uintptr_t candidate)
+        {
+            ID3D12Resource* resource = nullptr;
+            __try
+            {
+                auto* unknown = reinterpret_cast<IUnknown*>(candidate);
+                if (FAILED(unknown->QueryInterface(__uuidof(ID3D12Resource),
+                                                   reinterpret_cast<void**>(&resource))))
+                {
+                    resource = nullptr;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                resource = nullptr;
+            }
+            return resource;
+        }
+
+        uint64_t FindD3D12TextureView(void* texture)
+        {
+            struct CacheEntry
+            {
+                uint64_t View = 0;
+                uint32_t Epoch = 0;
+            };
+            static std::mutex cacheMutex;
+            static std::unordered_map<void*, CacheEntry> cache;
+
+            const uint32_t epoch = D3D12Hook_TextureEpoch();
+            {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                const auto found = cache.find(texture);
+                if (found != cache.end() && found->second.Epoch == epoch)
+                    return found->second.View;
+            }
+
+            uintptr_t d3d12Base = 0;
+            uintptr_t d3d12CoreBase = 0;
+            uintptr_t gameBase = 0;
+            size_t d3d12Size = 0;
+            size_t d3d12CoreSize = 0;
+            size_t gameSize = 0;
+            if (!ModuleImageSize(GetModuleHandleA("d3d12.dll"), d3d12Base, d3d12Size) ||
+                !ModuleImageSize(GetModuleHandle(nullptr), gameBase, gameSize))
+            {
+                return 0;
+            }
+            ModuleImageSize(GetModuleHandleA("d3d12core.dll"), d3d12CoreBase,
+                            d3d12CoreSize);
+
+            std::vector<std::pair<uintptr_t, int>> pending;
+            std::unordered_set<uintptr_t> visited;
+            pending.emplace_back(reinterpret_cast<uintptr_t>(texture), 0);
+            size_t cursor = 0;
+            size_t budget = 2048;
+            while (cursor < pending.size() && budget-- > 0)
+            {
+                const auto [address, depth] = pending[cursor++];
+                if (depth > 3 || !visited.insert(address).second) continue;
+
+                std::vector<uint8_t> buffer(0x300, 0);
+                if (!SafeMem_Read(reinterpret_cast<void*>(address), buffer.data(),
+                                  static_cast<int32_t>(buffer.size())))
+                {
+                    continue;
+                }
+
+                for (int offset = 0x8; offset <= 0x2F8; offset += 8)
+                {
+                    uintptr_t candidate = 0;
+                    std::memcpy(&candidate, buffer.data() + offset, sizeof(candidate));
+                    if (candidate < 0x10000 || candidate > 0x7FFFFFFFFFFF) continue;
+
+                    uintptr_t vtable = 0;
+                    if (!SafeMem_Read(reinterpret_cast<void*>(candidate), &vtable,
+                                      sizeof(vtable)))
+                    {
+                        continue;
+                    }
+
+                    const bool d3d12Object =
+                        (d3d12Base && vtable >= d3d12Base &&
+                         vtable < d3d12Base + d3d12Size) ||
+                        (d3d12CoreBase && vtable >= d3d12CoreBase &&
+                         vtable < d3d12CoreBase + d3d12CoreSize);
+                    if (d3d12Object)
+                    {
+                        ID3D12Resource* resource = QueryD3D12Resource(candidate);
+                        if (!resource) continue;
+
+                        const uint64_t view = D3D12Hook_CreateTextureView(resource);
+                        resource->Release();
+                        if (!view) continue;
+
+                        {
+                            std::lock_guard<std::mutex> lock(cacheMutex);
+                            cache[texture] = CacheEntry{view, epoch};
+                        }
+                        return view;
+                    }
+                    if (depth < 3 && vtable >= gameBase && vtable < gameBase + gameSize)
+                    {
+                        pending.emplace_back(candidate, depth + 1);
+                    }
+                }
+            }
+            return 0;
+        }
+
+        uint64_t ApiGetImGuiTexture(void* texture)
+        {
+            if (!ApiIsValidObject(texture) || !ApiIsA(texture, "Texture2D")) return 0;
+            if (D3D12Hook_TextureBridgeReady()) return FindD3D12TextureView(texture);
+            return reinterpret_cast<uint64_t>(FindD3D11TextureView(texture));
+        }
+
+        void* ApiGetDataTableRow(void* dataTable, const char* rowName)
+        {
+            if (!dataTable || !rowName || !*rowName) return nullptr;
+
+            UObject* table = static_cast<UObject*>(dataTable);
+            UClass* tableClass = EngineDiscovery::GetObjectClass(g_State, table);
+            if (!tableClass) return nullptr;
+
+            PropertyRef rowStructProperty;
+            if (!FindProperty(g_State, tableClass, "RowStruct", rowStructProperty))
+                return nullptr;
+            if (rowStructProperty.Offset <= 0) return nullptr;
+
+            struct RowMapHeader
+            {
+                void* Data;
+                int32_t ArrayNum;
+                int32_t ArrayMax;
+            };
+
+            RowMapHeader header{};
+            const int32_t rowMapOffset =
+                rowStructProperty.Offset + static_cast<int32_t>(sizeof(void*));
+            if (!SafeMem_Read(reinterpret_cast<uint8_t*>(table) + rowMapOffset, &header,
+                              sizeof(header)))
+            {
+                return nullptr;
+            }
+            if (!header.Data || header.ArrayNum <= 0 || header.ArrayNum > 50000)
+                return nullptr;
+
+            std::string nameText = rowName;
+            int32_t nameIndex = EngineDiscovery::ResolveFNameIndex(g_State, nameText);
+            uint32_t wantedNumber = 0;
+            if (nameIndex < 0)
+            {
+                size_t end = nameText.size();
+                while (end > 0 && nameText[end - 1] >= '0' && nameText[end - 1] <= '9')
+                    --end;
+                if (end < nameText.size() && end > 0 && nameText[end - 1] == '_')
+                {
+                    uint64_t external = 0;
+                    for (size_t i = end; i < nameText.size(); ++i)
+                        external = external * 10 + static_cast<uint64_t>(nameText[i] - '0');
+                    const std::string baseName = nameText.substr(0, end - 1);
+                    nameIndex = EngineDiscovery::ResolveFNameIndex(g_State, baseName);
+                    if (nameIndex >= 0 && external < 0xFFFF)
+                        wantedNumber = static_cast<uint32_t>(external + 1);
+                }
+            }
+            if (nameIndex < 0) return nullptr;
+
+            constexpr int32_t kElementStride = 0x18;
+            for (int32_t i = 0; i < header.ArrayNum; ++i)
+            {
+                uint8_t* element = reinterpret_cast<uint8_t*>(header.Data) +
+                                   static_cast<size_t>(i) * kElementStride;
+                FName name{};
+                if (!SafeMem_Read(element, &name, sizeof(name))) continue;
+                if (static_cast<int32_t>(name.ComparisonIndex) != nameIndex ||
+                    name.Number != wantedNumber)
+                {
+                    continue;
+                }
+
+                void* row = nullptr;
+                if (!SafeMem_Read(element + sizeof(FName), &row, sizeof(row))) return nullptr;
+                return row;
+            }
+            return nullptr;
+        }
     }
 
     const AvaloniumModApi g_Api = {
@@ -864,6 +1154,8 @@ namespace Avalonium::CppMods
         &ApiResolveRelative,
         &ApiGetVtable,
         &ApiGetVirtualFunction,
+        &ApiGetImGuiTexture,
+        &ApiGetDataTableRow,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

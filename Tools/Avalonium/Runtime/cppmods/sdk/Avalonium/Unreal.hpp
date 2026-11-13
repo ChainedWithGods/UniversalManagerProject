@@ -612,4 +612,13 @@ namespace RC::Unreal
         UClass* objectClass = UObject::FindClass(className);
         return objectClass ? UObject::FindFirstOfClass(objectClass) : nullptr;
     }
+
+    inline void* GetDataTableRow(UObject* table, std::string_view rowName)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        return (api && api->get_data_table_row)
+                   ? api->get_data_table_row(table ? table->Address() : nullptr,
+                                             std::string(rowName).c_str())
+                   : nullptr;
+    }
 }

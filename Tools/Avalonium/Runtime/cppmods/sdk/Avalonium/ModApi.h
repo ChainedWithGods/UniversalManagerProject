@@ -213,6 +213,10 @@ typedef struct AvaloniumModApi
                                  int32_t instruction_length);
     void* (*get_vtable)(void* object);
     void* (*get_virtual_function)(void* object, int32_t slot);
+
+    uint64_t (*get_imgui_texture)(void* texture2d);
+
+    void* (*get_data_table_row)(void* data_table, const char* row_name);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);
