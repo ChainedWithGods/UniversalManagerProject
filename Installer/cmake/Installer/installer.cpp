@@ -43,7 +43,7 @@ extern "C" {
 namespace fs = std::filesystem;
 
 static const wchar_t* const APP_NAME        = L"Universal Mod Manager";
-static const wchar_t* const APP_VERSION     = L"1.3.0.0";
+static const wchar_t* const APP_VERSION     = L"1.4.0.0";
 static const wchar_t* const EXE_NAME        = L"UniversalManager.exe";
 static const wchar_t* const REG_SUBKEY      = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Universal Mod Manager";
 static const wchar_t* const DEFAULT_INSTALL = L"C:\\Program Files\\Universal Mod Manager";
@@ -764,7 +764,7 @@ static void DrawPage0_Welcome(HDC hdc, const RECT& rc)
 
     RECT rBadge = { 412, 78, 506, 100 };
     FillRoundRectAA(hdc, rBadge, 11, CLR_ACCENT_BG, CLR_ACCENT, 1);
-    DrawTextLeft(hdc, L"Version 1.3.0", rBadge, RGB(255, 255, 255), g_fontBadge, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawTextLeft(hdc, L"Version 1.4.0", rBadge, RGB(255, 255, 255), g_fontBadge, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     RECT rPublisher = { 126, 106, CLIENT_W - 52, 126 };
     {
