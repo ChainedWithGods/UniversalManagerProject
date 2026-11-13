@@ -106,4 +106,21 @@ namespace RC::Hook
         const AvaloniumModApi* api = Avalonium::Detail::Api();
         return api && api->unregister_hook && api->unregister_hook(hookId);
     }
+
+    inline uint32_t RegisterVeto(std::string_view className, std::string_view functionName,
+                                 AvaloniumVetoCallback veto, void* userData = nullptr)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->register_hook_veto || !veto) return 0;
+        return api->register_hook_veto(std::string(className).c_str(),
+                                       std::string(functionName).c_str(), veto, userData);
+    }
+
+    inline uint32_t RegisterAddressVeto(void* target, AvaloniumVetoCallback veto,
+                                        void* userData = nullptr)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->register_address_veto || !veto || !target) return 0;
+        return api->register_address_veto(target, veto, userData);
+    }
 }

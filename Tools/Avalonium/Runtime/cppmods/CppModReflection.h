@@ -40,6 +40,12 @@ namespace Avalonium::CppMods
                       const AvaloniumValue* args, int32_t argCount, AvaloniumValue& outResult,
                       std::string* why = nullptr);
 
+    bool CallFunctionOut(EngineState& state, UObject* object, const std::string& functionName,
+                         const AvaloniumValue* args, int32_t argCount,
+                         const char* const* outNames, AvaloniumValue* outValues,
+                         int32_t outCount, AvaloniumValue& outResult,
+                         std::string* why = nullptr);
+
     bool ProcessEvent(EngineState& state, UObject* object, UFunction* function, void* params);
 
     int32_t GetClassProperties(EngineState& state, UClass* objectClass,

@@ -1,4 +1,4 @@
-#include "CppModReflection.h"
+﻿#include "CppModReflection.h"
 
 #include "../console/ConsoleInternal.h"
 #include "../core/BlueprintDiscovery.h"
@@ -422,89 +422,160 @@ namespace Avalonium::CppMods
         return true;
     }
 
+    namespace
+    {
+        bool CallFunctionInternal(EngineState& state, UObject* object,
+                                  const std::string& functionName,
+                                  const AvaloniumValue* args, int32_t argCount,
+                                  const char* const* outNames, AvaloniumValue* outValues,
+                                  int32_t outCount, AvaloniumValue& outResult,
+                                  std::string* why)
+        {
+            SetNoneValue(outResult);
+            if (!IsGameThreadCallable(state, why)) return false;
+            if (!object || !SafeMem_IsReadable(object, 0x20))
+            {
+                if (why) *why = "the object pointer is not readable";
+                return false;
+            }
+            if (outCount > 0 && (!outNames || !outValues))
+            {
+                if (why) *why = "out_names and out_values must both be provided";
+                return false;
+            }
+
+            UClass* objectClass = EngineDiscovery::GetObjectClass(state, object);
+            UFunction* function = FindFunction(state, objectClass, functionName);
+            if (!function)
+            {
+                if (why) *why = "function '" + functionName + "' was not found on class '" +
+                                (objectClass ? EngineDiscovery::GetObjectNameStr(state, objectClass)
+                                             : std::string("<none>")) + "'";
+                return false;
+            }
+
+            std::vector<EngineDiscovery::ReflectedMember> members;
+            EngineDiscovery::GetReflectedMembers(state, static_cast<UStruct*>(function), members);
+
+            std::vector<PropertyRef> outParams;
+            outParams.reserve(static_cast<size_t>(outCount > 0 ? outCount : 0));
+            for (int32_t i = 0; i < outCount; ++i)
+            {
+                SetNoneValue(outValues[i]);
+                if (!outNames[i] || !outNames[i][0])
+                {
+                    if (why) *why = "an out parameter name is empty";
+                    return false;
+                }
+
+                bool found = false;
+                for (const EngineDiscovery::ReflectedMember& member : members)
+                {
+                    if (!SameText(member.Name, outNames[i])) continue;
+                    outParams.push_back(MakePropertyRef(state, member));
+                    found = true;
+                    break;
+                }
+                if (!found)
+                {
+                    if (why) *why = std::string("parameter '") + outNames[i] +
+                                    "' was not found on the function";
+                    return false;
+                }
+            }
+
+            int32_t frameSize = EngineDiscovery::GetFunctionFrameSize(state, function);
+            if (frameSize <= 0) frameSize = static_cast<int32_t>(sizeof(uint64_t));
+            if (frameSize > (1 << 20))
+            {
+                if (why) *why = "the function's reflected frame size is implausible";
+                return false;
+            }
+
+            std::vector<uint64_t> block(
+                static_cast<size_t>((frameSize + static_cast<int32_t>(sizeof(uint64_t)) - 1) /
+                                    sizeof(uint64_t)) + 1, 0);
+            uint8_t* params = reinterpret_cast<uint8_t*>(block.data());
+
+            std::vector<PropertyRef> inParams;
+            inParams.reserve(members.size());
+            PropertyRef returnProperty;
+            bool hasReturn = false;
+            const int32_t returnOffset =
+                EngineDiscovery::GetFunctionReturnValueOffset(state, function);
+
+            for (const EngineDiscovery::ReflectedMember& member : members)
+            {
+                const bool isParam = (member.Flags & kCpfParm) != 0;
+                const bool isReturn = (member.Flags & kCpfReturnParm) != 0 ||
+                                      member.Name == "ReturnValue" ||
+                                      (returnOffset >= 0 && member.Offset == returnOffset);
+                if (!isParam || isReturn) continue;
+                inParams.push_back(MakePropertyRef(state, member));
+            }
+
+            const int32_t provided = args ? (std::max)(argCount, 0) : 0;
+            const int32_t bound = (std::min)(provided, static_cast<int32_t>(inParams.size()));
+            for (int32_t i = 0; i < bound; ++i)
+            {
+                if (args[i].kind == AVALONIUM_VALUE_NONE) continue;
+                const PropertyRef& property = inParams[static_cast<size_t>(i)];
+                if (!WriteValueAt(state, property, params + property.Offset, args[i]))
+                {
+                    if (why) *why = "argument " + std::to_string(i) + " ('" + property.Name +
+                                    "', " + property.TypeName + ") rejected the value";
+                    return false;
+                }
+            }
+
+            if (!EngineDiscovery::CallProcessEvent(state, object, function, params))
+            {
+                if (why) *why = "the engine refused the reflected call";
+                return false;
+            }
+
+            hasReturn = FindReturnMember(state, function, returnProperty);
+            if (hasReturn && returnProperty.Offset >= 0)
+            {
+                ReadValueAt(state, returnProperty, params + returnProperty.Offset, outResult);
+                StabilizeStructValue(outResult);
+            }
+
+            for (int32_t i = 0; i < outCount; ++i)
+            {
+                const PropertyRef& property = outParams[static_cast<size_t>(i)];
+                AvaloniumValue value{};
+                SetNoneValue(value);
+                if (!ReadValueAt(state, property, params + property.Offset, value))
+                {
+                    if (why) *why = std::string("out parameter '") + outNames[i] +
+                                    "' has an unsupported value type";
+                    return false;
+                }
+                StabilizeStructValue(value);
+                outValues[i] = value;
+            }
+
+            return true;
+        }
+    }
+
     bool CallFunction(EngineState& state, UObject* object, const std::string& functionName,
                       const AvaloniumValue* args, int32_t argCount, AvaloniumValue& outResult,
                       std::string* why)
     {
-        SetNoneValue(outResult);
-        if (!IsGameThreadCallable(state, why)) return false;
-        if (!object || !SafeMem_IsReadable(object, 0x20))
-        {
-            if (why) *why = "the object pointer is not readable";
-            return false;
-        }
+        return CallFunctionInternal(state, object, functionName, args, argCount, nullptr,
+                                    nullptr, 0, outResult, why);
+    }
 
-        UClass* objectClass = EngineDiscovery::GetObjectClass(state, object);
-        UFunction* function = FindFunction(state, objectClass, functionName);
-        if (!function)
-        {
-            if (why) *why = "function '" + functionName + "' was not found on class '" +
-                            (objectClass ? EngineDiscovery::GetObjectNameStr(state, objectClass)
-                                         : std::string("<none>")) + "'";
-            return false;
-        }
-
-        std::vector<EngineDiscovery::ReflectedMember> members;
-        EngineDiscovery::GetReflectedMembers(state, static_cast<UStruct*>(function), members);
-
-        int32_t frameSize = EngineDiscovery::GetFunctionFrameSize(state, function);
-        if (frameSize <= 0) frameSize = static_cast<int32_t>(sizeof(uint64_t));
-        if (frameSize > (1 << 20))
-        {
-            if (why) *why = "the function's reflected frame size is implausible";
-            return false;
-        }
-
-        std::vector<uint64_t> block(
-            static_cast<size_t>((frameSize + static_cast<int32_t>(sizeof(uint64_t)) - 1) /
-                                sizeof(uint64_t)) + 1, 0);
-        uint8_t* params = reinterpret_cast<uint8_t*>(block.data());
-
-        std::vector<PropertyRef> inParams;
-        inParams.reserve(members.size());
-        PropertyRef returnProperty;
-        bool hasReturn = false;
-        const int32_t returnOffset =
-            EngineDiscovery::GetFunctionReturnValueOffset(state, function);
-
-        for (const EngineDiscovery::ReflectedMember& member : members)
-        {
-            const bool isParam = (member.Flags & kCpfParm) != 0;
-            const bool isReturn = (member.Flags & kCpfReturnParm) != 0 ||
-                                  member.Name == "ReturnValue" ||
-                                  (returnOffset >= 0 && member.Offset == returnOffset);
-            if (!isParam || isReturn) continue;
-            inParams.push_back(MakePropertyRef(state, member));
-        }
-
-        const int32_t provided = args ? (std::max)(argCount, 0) : 0;
-        const int32_t bound = (std::min)(provided, static_cast<int32_t>(inParams.size()));
-        for (int32_t i = 0; i < bound; ++i)
-        {
-            if (args[i].kind == AVALONIUM_VALUE_NONE) continue;
-            const PropertyRef& property = inParams[static_cast<size_t>(i)];
-            if (!WriteValueAt(state, property, params + property.Offset, args[i]))
-            {
-                if (why) *why = "argument " + std::to_string(i) + " ('" + property.Name +
-                                "', " + property.TypeName + ") rejected the value";
-                return false;
-            }
-        }
-
-        if (!EngineDiscovery::CallProcessEvent(state, object, function, params))
-        {
-            if (why) *why = "the engine refused the reflected call";
-            return false;
-        }
-
-        hasReturn = FindReturnMember(state, function, returnProperty);
-        if (hasReturn && returnProperty.Offset >= 0)
-        {
-            ReadValueAt(state, returnProperty, params + returnProperty.Offset, outResult);
-            StabilizeStructValue(outResult);
-        }
-
-        return true;
+    bool CallFunctionOut(EngineState& state, UObject* object, const std::string& functionName,
+                         const AvaloniumValue* args, int32_t argCount,
+                         const char* const* outNames, AvaloniumValue* outValues,
+                         int32_t outCount, AvaloniumValue& outResult,
+                         std::string* why)
+    {
+        return CallFunctionInternal(state, object, functionName, args, argCount, outNames,
+                                    outValues, outCount, outResult, why);
     }
 
     bool ProcessEvent(EngineState& state, UObject* object, UFunction* function, void* params)

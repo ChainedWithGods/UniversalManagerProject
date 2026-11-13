@@ -4,6 +4,7 @@
 #include "Value.hpp"
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -121,6 +122,12 @@ namespace RC::Unreal
             return api && api->is_valid_object && api->is_valid_object(Address());
         }
 
+        bool IsPendingKill() const
+        {
+            const AvaloniumModApi* api = Avalonium::Detail::Api();
+            return api && api->is_pending_kill && api->is_pending_kill(Address());
+        }
+
         FString GetName() const
         {
             const AvaloniumModApi* api = Avalonium::Detail::Api();
@@ -234,6 +241,44 @@ namespace RC::Unreal
                                                static_cast<int32_t>(rawArgs.size()), &rawResult);
             if (ok && result) *result = Value::FromRaw(rawResult);
             return ok;
+        }
+
+        bool CallOutValues(std::string_view functionName, const std::vector<Value>& inArgs,
+                           std::initializer_list<std::string_view> outNames,
+                           std::vector<Value>& outValues, Value* result = nullptr) const
+        {
+            outValues.clear();
+            const AvaloniumModApi* api = Avalonium::Detail::Api();
+            if (!api || !api->call_function_out) return false;
+
+            std::vector<AvaloniumValue> rawArgs;
+            rawArgs.reserve(inArgs.size());
+            for (const Value& arg : inArgs) rawArgs.push_back(arg.Raw());
+
+            std::vector<std::string> names;
+            names.reserve(outNames.size());
+            for (std::string_view name : outNames) names.emplace_back(name);
+
+            std::vector<const char*> namePointers;
+            namePointers.reserve(names.size());
+            for (const std::string& name : names) namePointers.push_back(name.c_str());
+
+            std::vector<AvaloniumValue> rawOut(names.size());
+            AvaloniumValue rawResult{};
+            const bool ok =
+                api->call_function_out(Address(), std::string(functionName).c_str(),
+                                       rawArgs.empty() ? nullptr : rawArgs.data(),
+                                       static_cast<int32_t>(rawArgs.size()),
+                                       namePointers.empty() ? nullptr : namePointers.data(),
+                                       rawOut.empty() ? nullptr : rawOut.data(),
+                                       static_cast<int32_t>(rawOut.size()),
+                                       result ? &rawResult : nullptr);
+            if (!ok) return false;
+
+            outValues.reserve(rawOut.size());
+            for (const AvaloniumValue& raw : rawOut) outValues.push_back(Value::FromRaw(raw));
+            if (result) *result = Value::FromRaw(rawResult);
+            return true;
         }
 
         template <class R = void, class... Args>

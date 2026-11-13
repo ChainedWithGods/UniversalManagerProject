@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define AVALONIUM_MOD_API_VERSION 11u
+#define AVALONIUM_MOD_API_VERSION 15u
 #define AVALONIUM_MOD_API_MIN_VERSION 1u
 
 #define AVALONIUM_MOD_ABI_VERSION 1u
@@ -82,6 +82,9 @@ typedef struct AvaloniumFunctionInfo
 } AvaloniumFunctionInfo;
 
 typedef void (*AvaloniumHookCallback)(void* user_data, void* object, void* function, void* frame, void* result);
+
+typedef bool (*AvaloniumVetoCallback)(void* user_data, void* object, void* function, void* frame,
+                                      void* result);
 
 typedef void (*AvaloniumKeyCallback)(void* user_data);
 
@@ -217,6 +220,19 @@ typedef struct AvaloniumModApi
     uint64_t (*get_imgui_texture)(void* texture2d);
 
     void* (*get_data_table_row)(void* data_table, const char* row_name);
+
+    bool (*call_function_out)(void* object, const char* function_name,
+                              const AvaloniumValue* args, int32_t arg_count,
+                              const char* const* out_names, AvaloniumValue* out_values,
+                              int32_t out_count, AvaloniumValue* out_result);
+
+    bool (*is_pending_kill)(void* object);
+
+    uint32_t (*register_hook_veto)(const char* class_name, const char* function_name,
+                                   AvaloniumVetoCallback veto, void* user_data);
+
+    uint32_t (*register_address_veto)(void* target, AvaloniumVetoCallback veto,
+                                      void* user_data);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);

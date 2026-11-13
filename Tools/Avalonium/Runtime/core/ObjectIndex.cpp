@@ -1138,4 +1138,45 @@ void InvalidateObjectFromCache(EngineState &state, UObject *obj) {
   }
 }
 
+uint32_t GetInternalObjectFlags(const EngineState &state, UObject *obj) {
+  if (!obj || !state.GUObjectArray || state.UObject_IndexOff < 0) return 0;
+
+  int32_t index = 0;
+  if (!SafeMem_Read((uint8_t *)obj + state.UObject_IndexOff, &index, sizeof(index)))
+    return 0;
+  if (index < 0) return 0;
+
+  const int32_t count = GetObjectCount(const_cast<EngineState &>(state));
+  if (index >= count) return 0;
+
+  void *objectsPtr = SafeMem_ReadPtr((uint8_t *)state.GUObjectArray +
+                                     state.TUObjectArray_ObjectsOff);
+  if (!objectsPtr) return 0;
+
+  const int32_t itemSize = state.UObjectArray_ItemSize > 0 ? state.UObjectArray_ItemSize : 24;
+  const int32_t objOff = state.FUObjectItem_ObjectOff >= 0 ? state.FUObjectItem_ObjectOff : 0;
+  const int32_t elementsPerChunk = GetElementsPerChunk(state);
+  if (elementsPerChunk <= 0) return 0;
+
+  void *chunk = SafeMem_ReadPtr((uint8_t *)objectsPtr +
+                                (index / elementsPerChunk) * sizeof(void *));
+  if (!chunk) return 0;
+
+  uint8_t *item = (uint8_t *)chunk + (index % elementsPerChunk) * itemSize;
+  void *slotObject = nullptr;
+  if (!SafeMem_Read(item + objOff, &slotObject, sizeof(slotObject)) || slotObject != obj)
+    return 0;
+
+  int32_t flags = 0;
+  if (!SafeMem_Read(item + 0x08, &flags, sizeof(flags))) return 0;
+  return (uint32_t)flags;
+}
+
+bool IsPendingKillObject(const EngineState &state, UObject *obj) {
+  const uint32_t flags = GetInternalObjectFlags(state, obj);
+
+  const uint32_t mask = state.UEMajor >= 5 ? (1u << 21) : (1u << 29);
+  return (flags & mask) != 0;
+}
+
 }

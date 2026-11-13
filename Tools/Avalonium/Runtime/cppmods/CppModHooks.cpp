@@ -38,6 +38,7 @@ namespace Avalonium::CppMods
             void* Function = nullptr;
             AvaloniumHookCallback Pre = nullptr;
             AvaloniumHookCallback Post = nullptr;
+            AvaloniumVetoCallback Veto = nullptr;
             void* User = nullptr;
             void* Owner = nullptr;
         };
@@ -71,6 +72,19 @@ namespace Avalonium::CppMods
         std::vector<std::unique_ptr<FuncPatch>> g_Retired;
         std::atomic<uint32_t> g_NextHookId{1};
         std::atomic<int> g_InFlight{0};
+
+        struct RawPatch
+        {
+            uint32_t Slot = 0;
+            Avalonium::InlineHook Hook;
+            void* Original = nullptr;
+            AvaloniumVetoCallback Veto = nullptr;
+            void* User = nullptr;
+            void* Owner = nullptr;
+        };
+
+        std::array<RawPatch*, kMaxHookSlots> g_RawSlotPatches{};
+        std::vector<std::unique_ptr<RawPatch>> g_RawPatches;
 
         std::mutex g_ScriptMutex;
         std::unordered_map<void*, std::vector<ScriptHookRecord>> g_ScriptHooks;
@@ -199,6 +213,32 @@ namespace Avalonium::CppMods
 
         void Dispatch(uint32_t slot, void* context, void* frame, void* result)
         {
+            RawPatch* rawPatch = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_Mutex);
+                if (slot < kMaxHookSlots) rawPatch = g_RawSlotPatches[slot];
+            }
+            if (rawPatch && rawPatch->Original)
+            {
+                NativeFunc rawOriginal = reinterpret_cast<NativeFunc>(rawPatch->Original);
+                bool allow = true;
+                if (rawPatch->Veto)
+                {
+                    try
+                    {
+                        allow = rawPatch->Veto(rawPatch->User, context, nullptr, frame, result);
+                    }
+                    catch (...)
+                    {
+                        LogLine("[CppMod] A raw hook veto threw an exception; the engine call "
+                                "was left uninterrupted");
+                    }
+                }
+                if (!allow) return;
+                rawOriginal(context, frame, result);
+                return;
+            }
+
             FuncPatch* patch = nullptr;
             NativeFunc original = nullptr;
             {
@@ -249,12 +289,37 @@ namespace Avalonium::CppMods
                 InvokeCallback(record.Pre, record.User, context, function, frame, nullptr);
             }
 
-            original(context, frame, result);
-
+            bool allowed = true;
             for (const HookRecord& record : records)
             {
+                if (!record.Veto) continue;
                 ModContextScope scope(record.Owner);
-                InvokeCallback(record.Post, record.User, context, function, frame, result);
+                bool allow = true;
+                try
+                {
+                    allow = record.Veto(record.User, context, function, frame, nullptr);
+                }
+                catch (...)
+                {
+                    LogLine("[CppMod] A hook veto threw an exception; the engine call was left "
+                            "uninterrupted");
+                }
+                if (!allow)
+                {
+                    allowed = false;
+                    break;
+                }
+            }
+
+            if (allowed)
+            {
+                original(context, frame, result);
+
+                for (const HookRecord& record : records)
+                {
+                    ModContextScope scope(record.Owner);
+                    InvokeCallback(record.Post, record.User, context, function, frame, result);
+                }
             }
         }
     }
@@ -342,11 +407,12 @@ namespace Avalonium::CppMods
     namespace
     {
         bool ValidateHookRequest(EngineState& state, AvaloniumHookCallback pre,
-                                 AvaloniumHookCallback post, std::string* why)
+                                 AvaloniumHookCallback post, AvaloniumVetoCallback veto,
+                                 std::string* why)
         {
-            if (!pre && !post)
+            if (!pre && !post && !veto)
             {
-                if (why) *why = "a hook needs a pre callback, a post callback, or both";
+                if (why) *why = "a hook needs a pre callback, a post callback, or a veto";
                 return false;
             }
             if (!state.bInitialized)
@@ -364,7 +430,8 @@ namespace Avalonium::CppMods
 
         uint32_t RegisterResolvedHook(EngineState& state, UFunction* function,
                                       AvaloniumHookCallback pre, AvaloniumHookCallback post,
-                                      void* userData, void* owner, std::string* why)
+                                      AvaloniumVetoCallback veto, void* userData, void* owner,
+                                      std::string* why)
         {
             if (!function)
             {
@@ -391,6 +458,11 @@ namespace Avalonium::CppMods
             const uint32_t flags = GetFunctionFlags(state, function);
             if ((flags & kFuncNative) == 0)
             {
+                if (veto)
+                {
+                    if (why) *why = "a veto is only supported for native functions";
+                    return 0;
+                }
 
                 if (!state.ProcessInternal || !hasEntry || target != state.ProcessInternal)
                 {
@@ -514,6 +586,7 @@ namespace Avalonium::CppMods
             record.Function = function;
             record.Pre = pre;
             record.Post = post;
+            record.Veto = veto;
             record.User = userData;
             record.Owner = owner;
             patch->Records.push_back(record);
@@ -532,18 +605,18 @@ namespace Avalonium::CppMods
                           AvaloniumHookCallback post, void* userData, void* owner,
                           std::string* why)
     {
-        if (!ValidateHookRequest(state, pre, post, why)) return 0;
+        if (!ValidateHookRequest(state, pre, post, nullptr, why)) return 0;
 
         UFunction* function = ResolveFunction(state, className, functionName, why);
         if (!function) return 0;
-        return RegisterResolvedHook(state, function, pre, post, userData, owner, why);
+        return RegisterResolvedHook(state, function, pre, post, nullptr, userData, owner, why);
     }
 
     uint32_t RegisterHookByFunction(EngineState& state, UFunction* function,
                                     AvaloniumHookCallback pre, AvaloniumHookCallback post,
                                     void* userData, void* owner, std::string* why)
     {
-        if (!ValidateHookRequest(state, pre, post, why)) return 0;
+        if (!ValidateHookRequest(state, pre, post, nullptr, why)) return 0;
         if (!function)
         {
             if (why) *why = "the function pointer is null";
@@ -560,7 +633,75 @@ namespace Avalonium::CppMods
             return 0;
         }
 
-        return RegisterResolvedHook(state, function, pre, post, userData, owner, why);
+        return RegisterResolvedHook(state, function, pre, post, nullptr, userData, owner, why);
+    }
+
+    uint32_t RegisterHookVeto(EngineState& state, const std::string& className,
+                              const std::string& functionName, AvaloniumVetoCallback veto,
+                              void* userData, void* owner, std::string* why)
+    {
+        if (!ValidateHookRequest(state, nullptr, nullptr, veto, why)) return 0;
+
+        UFunction* function = ResolveFunction(state, className, functionName, why);
+        if (!function) return 0;
+        return RegisterResolvedHook(state, function, nullptr, nullptr, veto, userData, owner,
+                                    why);
+    }
+
+    uint32_t RegisterAddressVeto(EngineState& state, void* target, AvaloniumVetoCallback veto,
+                                 void* userData, void* owner, std::string* why)
+    {
+        if (!target || !veto)
+        {
+            if (why) *why = "the target or the veto is null";
+            return 0;
+        }
+        if (!state.bInitialized)
+        {
+            if (why) *why = "the engine is not initialized";
+            return 0;
+        }
+
+        std::lock_guard<std::mutex> lock(g_Mutex);
+        uint32_t slot = kMaxHookSlots;
+        for (uint32_t i = 0; i < kMaxHookSlots; ++i)
+        {
+            if (g_SlotPatches[i] == nullptr && g_RawSlotPatches[i] == nullptr)
+            {
+                slot = i;
+                break;
+            }
+        }
+        if (slot == kMaxHookSlots)
+        {
+            if (why) *why = "all native hook slots are in use";
+            return 0;
+        }
+
+        auto owned = std::make_unique<RawPatch>();
+        owned->Slot = slot;
+
+        std::string reason;
+        void* original = nullptr;
+        if (!owned->Hook.Install(target, reinterpret_cast<void*>(g_SlotTable[slot]), &original,
+                                 &reason))
+        {
+            if (why) *why = "the raw entry could not be patched: " + reason;
+            return 0;
+        }
+
+        owned->Original = original;
+        owned->Veto = veto;
+        owned->User = userData;
+        owned->Owner = owner;
+        g_RawSlotPatches[slot] = owned.get();
+        g_RawPatches.push_back(std::move(owned));
+
+        char line[384];
+        std::snprintf(line, sizeof(line), "[CppMod] Address veto installed at %p (slot %u)",
+                      target, slot);
+        LogLine(line);
+        return g_NextHookId.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool UnregisterHook(uint32_t hookId)

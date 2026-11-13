@@ -46,4 +46,8 @@ UClass *FindClassCached(EngineState &state, const std::string &className);
 
 void InvalidateObjectFromCache(EngineState &state, UObject *obj);
 
+uint32_t GetInternalObjectFlags(const EngineState &state, UObject *obj);
+
+bool IsPendingKillObject(const EngineState &state, UObject *obj);
+
 }

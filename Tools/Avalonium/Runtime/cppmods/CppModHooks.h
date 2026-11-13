@@ -18,6 +18,13 @@ namespace Avalonium::CppMods
                                     AvaloniumHookCallback pre, AvaloniumHookCallback post,
                                     void* userData, void* owner, std::string* why);
 
+    uint32_t RegisterHookVeto(EngineState& state, const std::string& className,
+                              const std::string& functionName, AvaloniumVetoCallback veto,
+                              void* userData, void* owner, std::string* why);
+
+    uint32_t RegisterAddressVeto(EngineState& state, void* target, AvaloniumVetoCallback veto,
+                                 void* userData, void* owner, std::string* why);
+
     bool UnregisterHook(uint32_t hookId);
     void UnregisterHooksForOwner(void* owner);
 

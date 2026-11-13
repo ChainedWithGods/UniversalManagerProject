@@ -24,6 +24,7 @@
 #include "../core/Logger.h"
 #include "../core/NameResolution.h"
 #include "../core/ObjectArray.h"
+#include "../core/ObjectIndex.h"
 #include "../core/ObjectUtils.h"
 #include "../lua/LuaHookManager.h"
 #include "../utils/SafeMemory.h"
@@ -240,6 +241,12 @@ namespace Avalonium::CppMods
             return object && SafeMem_IsReadable(object, 0x20) != 0;
         }
 
+        bool ApiIsPendingKill(void* object)
+        {
+            return object && EngineDiscovery::IsPendingKillObject(
+                                 g_State, static_cast<UObject*>(object));
+        }
+
         const char* ApiGetObjectName(void* object)
         {
             if (!object) return "";
@@ -431,6 +438,27 @@ namespace Avalonium::CppMods
             return ok;
         }
 
+        bool ApiCallFunctionOut(void* object, const char* functionName,
+                                const AvaloniumValue* args, int32_t argCount,
+                                const char* const* outNames, AvaloniumValue* outValues,
+                                int32_t outCount, AvaloniumValue* outResult)
+        {
+            if (outResult) SetNoneValue(*outResult);
+            if (outValues && outCount > 0)
+            {
+                for (int32_t i = 0; i < outCount; ++i) SetNoneValue(outValues[i]);
+            }
+            if (!object || !functionName || outCount < 0) return false;
+            if (!EnsureGameThread("call_function_out")) return false;
+
+            AvaloniumValue result{};
+            const bool ok = CallFunctionOut(g_State, static_cast<UObject*>(object), functionName,
+                                            args, argCount, outNames, outValues, outCount,
+                                            result);
+            if (ok && outResult) *outResult = result;
+            return ok;
+        }
+
         bool ApiProcessEvent(void* object, void* function, void* params)
         {
             if (!object || !function) return false;
@@ -463,6 +491,54 @@ namespace Avalonium::CppMods
                                              preCallback, postCallback, userData, owner, &why);
             if (!id && !why.empty())
                 LogLine("[CppMod] Warning: hook registration failed: " + why);
+            return id;
+        }
+
+        uint32_t ApiRegisterHookVeto(const char* className, const char* functionName,
+                                     AvaloniumVetoCallback vetoCallback, void* userData)
+        {
+            if (!functionName || !vetoCallback) return 0;
+            if (!CppModManager::Get().IsRunning()) return 0;
+
+            void* owner = CurrentModToken();
+            if (owner)
+            {
+                auto* mod = static_cast<LoadedMod*>(owner);
+                if (!mod->Alive.load(std::memory_order_acquire)) return 0;
+            }
+            if (!owner)
+            {
+                LogLine("[CppMod] Warning: a hook veto was registered outside a mod callback; "
+                        "it will not be removed automatically when a mod unloads");
+            }
+
+            std::string why;
+            const uint32_t id =
+                RegisterHookVeto(g_State, className ? className : "", functionName,
+                                 vetoCallback, userData, owner, &why);
+            if (!id && !why.empty())
+                LogLine("[CppMod] Warning: hook veto registration failed: " + why);
+            return id;
+        }
+
+        uint32_t ApiRegisterAddressVeto(void* target, AvaloniumVetoCallback vetoCallback,
+                                        void* userData)
+        {
+            if (!target || !vetoCallback) return 0;
+            if (!CppModManager::Get().IsRunning()) return 0;
+
+            void* owner = CurrentModToken();
+            if (owner)
+            {
+                auto* mod = static_cast<LoadedMod*>(owner);
+                if (!mod->Alive.load(std::memory_order_acquire)) return 0;
+            }
+
+            std::string why;
+            const uint32_t id = RegisterAddressVeto(g_State, target, vetoCallback, userData,
+                                                    owner, &why);
+            if (!id && !why.empty())
+                LogLine("[CppMod] Warning: address veto registration failed: " + why);
             return id;
         }
 
@@ -1156,6 +1232,10 @@ namespace Avalonium::CppMods
         &ApiGetVirtualFunction,
         &ApiGetImGuiTexture,
         &ApiGetDataTableRow,
+        &ApiCallFunctionOut,
+        &ApiIsPendingKill,
+        &ApiRegisterHookVeto,
+        &ApiRegisterAddressVeto,
     };
 
     const AvaloniumSdkApi g_SdkApi = {
