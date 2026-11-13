@@ -6,6 +6,11 @@ the engine side of every call is resolved from the live process, so the same mod
 DLL targets UE 4.23 through 5.8 without a game name, an engine switch or an offset
 table.
 
+New to native mods? Start with the [tutorial](TUTORIAL.md): project setup, finding
+content, icons, game calls, debugging and the traps to avoid. Then browse the
+[examples](EXAMPLES.md) for texture, DataTable, inspector, HUD and hook patterns,
+and the [generated-SDK guide](SDK_MODS.md) for typed gameplay code.
+
 | Component | Source |
 | :--- | :--- |
 | Public SDK | [`Runtime/cppmods/sdk/Avalonium`](../../Runtime/cppmods/sdk/Avalonium) |
