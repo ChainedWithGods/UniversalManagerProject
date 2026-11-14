@@ -1280,11 +1280,13 @@ static bool BuildPakReport(const std::string& path, const PakInfo& info,
         totals.pak_entries += report.entry_count;
     }
 
-    Log(std::format("[AESKeyFinder]   Report: {} mount=\"{}\" entries={} primaryHash={} dirFiles={} dirHash={}",
-                    FileNameOf(path), report.mount_point, report.entry_count,
-                    primary.hash_verified ? "OK" : "no",
-                    report.directory.file_count,
-                    report.directory.hash_verified ? "OK" : "no"));
+    if (!options.quiet) {
+        Log(std::format("[AESKeyFinder]   Report: {} mount=\"{}\" entries={} primaryHash={} dirFiles={} dirHash={}",
+                        FileNameOf(path), report.mount_point, report.entry_count,
+                        primary.hash_verified ? "OK" : "no",
+                        report.directory.file_count,
+                        report.directory.hash_verified ? "OK" : "no"));
+    }
     return true;
 }
 
@@ -1417,15 +1419,19 @@ static bool BuildUtocReport(const std::string& path, const PakInfo& info,
             }
         }
         totals.iostore_indexed_files += directory.file_count;
-        Log(std::format("[AESKeyFinder]   Report: {} TOCv{} flags=0x{:02X} chunks={} mount=\"{}\" files={} dir={}",
-                        FileNameOf(path), report.toc.version, report.toc.flags,
-                        report.toc.entry_count, directory.mount_point,
-                        directory.file_count,
-                        directory.decrypted ? (directory.error.empty() ? "OK" : directory.error) : "encrypted/no key"));
+        if (!options.quiet) {
+            Log(std::format("[AESKeyFinder]   Report: {} TOCv{} flags=0x{:02X} chunks={} mount=\"{}\" files={} dir={}",
+                            FileNameOf(path), report.toc.version, report.toc.flags,
+                            report.toc.entry_count, directory.mount_point,
+                            directory.file_count,
+                            directory.decrypted ? (directory.error.empty() ? "OK" : directory.error) : "encrypted/no key"));
+        }
     } else {
-        Log(std::format("[AESKeyFinder]   Report: {} TOCv{} flags=0x{:02X} chunks={} (no directory index)",
-                        FileNameOf(path), report.toc.version, report.toc.flags,
-                        report.toc.entry_count));
+        if (!options.quiet) {
+            Log(std::format("[AESKeyFinder]   Report: {} TOCv{} flags=0x{:02X} chunks={} (no directory index)",
+                            FileNameOf(path), report.toc.version, report.toc.flags,
+                            report.toc.entry_count));
+        }
     }
     report.utoc_directory = std::move(directory);
     if (report.utoc_directory.present && !report.utoc_directory.error.empty())
@@ -1456,7 +1462,8 @@ bool PakVerifier::BuildArchiveReports(const uint8_t* key32,
         else if (info.is_ucas) ucas_by_stem[StemKey(info.pak_path)] = &info;
     }
 
-    Log(std::format("[AESKeyFinder] Building archive report for {} containers...", archives.size()));
+    if (!options.quiet)
+        Log(std::format("[AESKeyFinder] Building archive report for {} containers...", archives.size()));
 
     for (const auto& info : archives) {
         ArchiveReport report;
@@ -1507,10 +1514,12 @@ bool PakVerifier::BuildArchiveReports(const uint8_t* key32,
 
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
-    Log(std::format("[AESKeyFinder] Archive report built in {} ms: {} pak ({} entries), {} utoc ({} chunks, {} files), {} ucas; failures={}",
-                    elapsed, out_totals.paks, out_totals.pak_entries,
-                    out_totals.utocs, out_totals.iostore_chunks, out_totals.iostore_indexed_files,
-                    out_totals.ucas, out_totals.failures.size()));
+    if (!options.quiet) {
+        Log(std::format("[AESKeyFinder] Archive report built in {} ms: {} pak ({} entries), {} utoc ({} chunks, {} files), {} ucas; failures={}",
+                        elapsed, out_totals.paks, out_totals.pak_entries,
+                        out_totals.utocs, out_totals.iostore_chunks, out_totals.iostore_indexed_files,
+                        out_totals.ucas, out_totals.failures.size()));
+    }
     return true;
 }
 

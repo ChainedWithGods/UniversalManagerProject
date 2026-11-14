@@ -219,6 +219,7 @@ struct ReportOptions {
     int max_entries = 8;
     int max_extensions = 32;
     bool collect_all_paths = false;
+    bool quiet = false;
 };
 
 class PakVerifier {

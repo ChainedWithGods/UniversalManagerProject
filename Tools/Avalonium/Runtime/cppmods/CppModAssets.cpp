@@ -77,10 +77,19 @@ namespace Avalonium::CppMods
         void AddPak(const std::filesystem::path& pakPath)
         {
             Crypto::PakInfo info = Crypto::PakVerifier::ParsePakFile(pakPath.string());
-            if (!info.found_pak || info.is_encrypted) return;
+            if (!info.found_pak) return;
+            if (info.is_encrypted)
+            {
+                EngineDiscovery::WriteLogLine(
+                    ("[CppMod] Mod pak " + pakPath.filename().string() +
+                     ": encrypted index, skipped")
+                        .c_str());
+                return;
+            }
 
             Crypto::ReportOptions options;
             options.collect_all_paths = true;
+            options.quiet = true;
             options.max_samples = 0;
             options.max_entries = 0;
             options.max_extensions = 0;
