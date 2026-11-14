@@ -340,8 +340,8 @@ Hook::RegisterVeto("Actor", "K2_DestroyActor", &WhileSpawning, this);
 
 ## 9. Marking mod content
 
-Workshop content mounts under `/Game/Mod/...` in this game. A row can be marked as
-mod content from its actor path or its icon package:
+Workshop content mounts under `/Game/Mod/...` in this game, so a path test catches
+part of the mod roster:
 
 ```cpp
 bool IsModPath(const std::string& path)
@@ -350,7 +350,31 @@ bool IsModPath(const std::string& path)
 }
 ```
 
-Icons and names still work the same; the mark is only for display.
+Local paks under `<game>/Content/Paks/~mods` are not that simple: they can mount
+into the game's own package paths, so a base item wearing mod assets reads as base
+content. `IsModAsset` resolves the package back to the pak set:
+
+```cpp
+bool IsModContent(RC::Unreal::UObject* object)
+{
+    return object && object->IsValid() && object->IsModAsset();
+}
+```
+
+The runtime indexes `~mods`, reads each pak's mount point and file list, and
+matches the object's outermost package. Both a package a mod adds and a game
+package a mod overrides match. Apply the check to the row's own object and to the
+assets it displays; an item can be base content while its icon and materials come
+from a skin pak:
+
+```cpp
+entry.IsMod = IsModPath(componentPath) || component->IsModAsset();
+if (!entry.IsMod && entry.Icon)
+    entry.IsMod = entry.Icon->IsModAsset();
+```
+
+The index is built once, on the first call, and cached for the process. Icons and
+names still work the same; the mark is only for display.
 
 ---
 
@@ -406,6 +430,10 @@ The runtime log also carries `[CppMod]` lines from every loaded mod.
 ---
 
 ## More patterns
+
+[SPAWNING.md](SPAWNING.md) is a focused walkthrough of the newer CppAPI surface:
+out parameters from the caller, pending-kill checks, UFunction and address vetoes,
+and pak-backed mod detection.
 
 [EXAMPLES.md](EXAMPLES.md) has complete shapes for a texture browser, a DataTable
 explorer, a live object inspector, an actor HUD with screen projection, a UFunction

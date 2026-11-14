@@ -7,9 +7,11 @@ DLL targets UE 4.23 through 5.8 without a game name, an engine switch or an offs
 table.
 
 New to native mods? Start with the [tutorial](TUTORIAL.md): project setup, finding
-content, icons, game calls, debugging and the traps to avoid. Then browse the
-[examples](EXAMPLES.md) for texture, DataTable, inspector, HUD and hook patterns,
-and the [generated-SDK guide](SDK_MODS.md) for typed gameplay code.
+content, icons, game calls, debugging and the traps to avoid. Then read
+[Spawning and Mod Content](SPAWNING.md) for verified spawns, liveness checks,
+destroy vetoes and pak-backed mod detection. Browse the [examples](EXAMPLES.md) for
+texture, DataTable, inspector, HUD, hook and mod detection patterns, and the
+[generated-SDK guide](SDK_MODS.md) for typed gameplay code.
 
 | Component | Source |
 | :--- | :--- |
@@ -231,6 +233,7 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 | `UObject::GetObjectCount()`, `GetObjectByIndex(index)` | Walks the object array. |
 | `IsValid()` | Readability test for the object pointer. |
 | `IsPendingKill()` | True when the engine has scheduled the object for destruction (pending kill on UE4, garbage on UE5). Reflected calls on it act as no-ops. |
+| `IsModAsset()` | True when the object's package is added or overridden by a pak under `<game>/Content/Paks/~mods`. The pak set is indexed once per process. |
 | `GetName`, `GetFullName`, `GetPathName` | `FString` copies. |
 | `GetClass`, `GetOuter`, `GetSuperStruct` | Class or outer pointers. |
 | `IsA(name)` | Name-based class chain test. |
@@ -239,6 +242,15 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 are never constructed, and every method asks the runtime to read the running build.
 The mod's `UObject*` is the engine object address. The free functions
 `RC::Unreal::FindObject`, `FindClass` and `FindFirstOf` mirror the static calls.
+
+`IsModAsset` answers package provenance, not engine state. Local mod paks mount
+into the game's own asset paths, so a path test cannot separate a re-skin from
+base content. The runtime scans `<game>/Content/Paks/~mods` once, reads each pak's
+mount point and file list, maps them to package paths and caches the set. Both
+cases match: a package a mod adds, and a game package whose asset a mod pak
+overrides. Checking a row's displayed icon therefore marks a base weapon whose
+icon and materials come from a skin pak. An encrypted pak index is skipped, and a
+mount added after the first call is not in the set.
 
 ### Properties
 
@@ -794,6 +806,9 @@ therefore owns the version-specific structure.
 - A hook veto skips the original call while the caller continues as if it ran.
   Use it only when skipping leaves a valid state. Address vetoes are bound to one
   engine build.
+- `IsModAsset` reads paks under `<game>/Content/Paks/~mods` once per process. An
+  encrypted pak index is skipped, and content mounted after the first call is not
+  seen.
 - No standalone FText value constructor. `RC::Widgets::SetText` builds one through
   the engine; text properties can otherwise be copied as raw bytes.
 - New widget Blueprint classes and new texture assets cannot be created. Mods compose

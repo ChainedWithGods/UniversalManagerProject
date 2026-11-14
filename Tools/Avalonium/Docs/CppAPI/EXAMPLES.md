@@ -2,8 +2,8 @@
 
 These examples build on the [tutorial](TUTORIAL.md). Each one shows a capability
 that comes from the runtime itself: live reflection, the overlay texture bridge,
-DataTable access and UFunction hooks. None of them uses a generated SDK, a
-mappings file, a game name or an engine offset.
+DataTable access, UFunction hooks and pak-backed mod detection. None of them uses
+a generated SDK, a mappings file, a game name or an engine offset.
 
 The same compiled DLL targets UE 4.23 through 5.8.
 
@@ -466,6 +466,51 @@ Why it matters:
 - This is the difference from a mappings-based workflow. There is no per-game
   dump, no generated SDK rebuild, and no engine switch. The same mod DLL runs on
   every supported tree, and every example above inherits that.
+
+---
+
+## 8. Mod Content Detection
+
+Local paks mount into the game's own asset paths, so a package path cannot tell a
+re-skin from base content. `IsModAsset` checks the pak set instead:
+
+```cpp
+struct Row
+{
+    std::string Name;
+    RC::Unreal::UObject* Icon = nullptr;
+    bool IsMod = false;
+};
+
+void MarkRows(std::vector<Row>& rows)
+{
+    for (Row& row : rows)
+    {
+        row.IsMod = row.Icon && row.Icon->IsModAsset();
+    }
+}
+```
+
+The runtime scans `<game>/Content/Paks/~mods` once and caches the package set.
+Both a package a mod adds and a game package a mod pak overrides match, so a base
+weapon whose icon and materials come from a skin pak is marked correctly.
+
+Useful branches:
+
+- Check the item's own object first; content that mounts under `/Game/Mod/...`
+  is caught by the path alone.
+- Check the displayed assets next. A row can be base content while its icon,
+  mesh or material is overridden.
+- Call it after the first level load or during a roster scan; the first call
+  builds the index and every later call is a set lookup.
+- An encrypted pak index is skipped, and a mount added after the first call is
+  not in the set.
+
+Why it matters:
+
+- A path test only sees mods that chose a mod-specific mount point. The pak scan
+  sees every local pak the game loads, including asset overrides, without a game
+  name or a hardcoded mount list.
 
 ---
 

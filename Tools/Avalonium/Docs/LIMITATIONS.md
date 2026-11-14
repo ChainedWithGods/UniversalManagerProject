@@ -57,6 +57,9 @@ C++ mod limits:
 - A native hook veto skips the engine function and the caller continues as if it ran.
   The C++ API offers per-UFunction and raw-address vetoes; an address veto is tied to
   one engine build, and a skip must leave a valid state.
+- `IsModAsset` covers paks under `<game>/Content/Paks/~mods`. The package set is
+  indexed once, on the first call; an encrypted pak index is skipped, and content
+  mounted after that call is not seen.
 - Native non-UFUNCTION calls are the mod's declaration: the runtime resolves an
   export, pattern or vtable slot and returns the address, and the mod calls it
   with the real signature on the game thread. A wrong pattern, slot or signature
