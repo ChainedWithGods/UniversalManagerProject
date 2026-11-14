@@ -151,6 +151,7 @@ struct DirectoryReport {
     int32_t walked_file_count = 0;
     std::map<std::string, int> extension_counts;
     std::vector<std::string> sample_paths;
+    std::vector<std::string> all_paths;
     std::vector<PakSampleEntry> sample_entries;
     std::vector<std::pair<std::string, uint32_t>> sample_files;
 };
@@ -217,6 +218,7 @@ struct ReportOptions {
     int max_samples = 20;
     int max_entries = 8;
     int max_extensions = 32;
+    bool collect_all_paths = false;
 };
 
 class PakVerifier {

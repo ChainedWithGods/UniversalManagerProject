@@ -67,6 +67,7 @@ set(SOURCES
     cppmods/CppModNative.cpp
     cppmods/CppModImGui.cpp
     cppmods/CppModApi.cpp
+    cppmods/CppModAssets.cpp
 
     console/ConsoleHelpers.cpp
     console/ConsoleEnabler.cpp

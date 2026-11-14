@@ -2,6 +2,7 @@
 #include "sdk/Avalonium/SdkApi.h"
 
 #include "CppModContext.h"
+#include "CppModAssets.h"
 #include "CppModContainers.h"
 #include "CppModHooks.h"
 #include "CppModImGui.h"
@@ -245,6 +246,11 @@ namespace Avalonium::CppMods
         {
             return object && EngineDiscovery::IsPendingKillObject(
                                  g_State, static_cast<UObject*>(object));
+        }
+
+        bool ApiIsModAsset(void* object)
+        {
+            return object && IsModAsset(g_State, static_cast<UObject*>(object));
         }
 
         const char* ApiGetObjectName(void* object)
@@ -1236,6 +1242,7 @@ namespace Avalonium::CppMods
         &ApiIsPendingKill,
         &ApiRegisterHookVeto,
         &ApiRegisterAddressVeto,
+        &ApiIsModAsset,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

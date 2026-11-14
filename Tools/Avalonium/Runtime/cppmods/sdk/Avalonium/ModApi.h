@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define AVALONIUM_MOD_API_VERSION 15u
+#define AVALONIUM_MOD_API_VERSION 16u
 #define AVALONIUM_MOD_API_MIN_VERSION 1u
 
 #define AVALONIUM_MOD_ABI_VERSION 1u
@@ -233,6 +233,8 @@ typedef struct AvaloniumModApi
 
     uint32_t (*register_address_veto)(void* target, AvaloniumVetoCallback veto,
                                       void* user_data);
+
+    bool (*is_mod_asset)(void* object);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);

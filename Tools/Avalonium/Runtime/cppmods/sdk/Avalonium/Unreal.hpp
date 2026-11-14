@@ -128,6 +128,12 @@ namespace RC::Unreal
             return api && api->is_pending_kill && api->is_pending_kill(Address());
         }
 
+        bool IsModAsset() const
+        {
+            const AvaloniumModApi* api = Avalonium::Detail::Api();
+            return api && api->is_mod_asset && api->is_mod_asset(Address());
+        }
+
         FString GetName() const
         {
             const AvaloniumModApi* api = Avalonium::Detail::Api();

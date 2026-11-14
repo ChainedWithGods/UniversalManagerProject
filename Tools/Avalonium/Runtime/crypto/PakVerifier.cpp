@@ -1054,6 +1054,7 @@ static bool ParsePakDirectoryIndex(const std::vector<uint8_t>& plain,
             if (!ext.empty()) ++extensions[ext];
             if (static_cast<int>(out.sample_paths.size()) < options.max_samples)
                 out.sample_paths.push_back(full);
+            if (options.collect_all_paths) out.all_paths.push_back(full);
             if (static_cast<int>(candidates.size()) < options.max_entries &&
                 location >= 0 && static_cast<size_t>(location) < encoded.size()) {
                 candidates.emplace_back(full, location);
@@ -1356,6 +1357,7 @@ static bool ParseIoStoreDirectoryIndex(const std::vector<uint8_t>& plain,
                     out.sample_paths.push_back(full);
                     out.sample_files.emplace_back(full, file.user_data);
                 }
+                if (options.collect_all_paths) out.all_paths.push_back(full);
                 file_index = file.next_file;
             }
             uint32_t child = dir.first_child;
