@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QDebug>
 
 namespace {
@@ -27,6 +28,13 @@ QStringList defaultModFolders()
 
 constexpr const char* kProfilesFolderName = "Universal Manager Lua Mods";
 constexpr const char* kCppProfilesFolderName = "Universal Manager Cpp Mods";
+
+QString folderMatchKey(const QString& name)
+{
+    QString key = name.toLower();
+    key.remove(QRegularExpression(QStringLiteral("\\s+")));
+    return key;
+}
 
 QString sanitizeFolderName(const QString& name)
 {
@@ -534,7 +542,51 @@ QString LuaProfileManager::cppProfileFolderPath(const QString& presetId, const Q
     if (folderName.isEmpty()) {
         return QString();
     }
-    return QDir(root).filePath(folderName);
+
+    const QString targetPath = QDir(root).filePath(folderName);
+    QDir targetDir(targetPath);
+    if (targetDir.exists()
+        && !targetDir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+        return targetPath;
+    }
+
+    const QString matchKey = folderMatchKey(folderName);
+    QSet<QString> reserved;
+    if (m_modManager) {
+        const QVariantList presets = m_modManager->gamePresets();
+        for (const QVariant& value : presets) {
+            const QVariantMap preset = value.toMap();
+            const QString otherId = preset.value(QStringLiteral("id")).toString();
+            if (otherId.isEmpty() || otherId == presetId) {
+                continue;
+            }
+            const QString otherFolder = folderNameForPresetId(
+                otherId, preset.value(QStringLiteral("name")).toString());
+            if (!otherFolder.isEmpty()) {
+                reserved.insert(otherFolder.toLower());
+            }
+        }
+    }
+
+    QString adoptedPath;
+    int matches = 0;
+    const QFileInfoList siblings = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo& sibling : siblings) {
+        const QString siblingName = sibling.fileName();
+        if (siblingName.compare(folderName, Qt::CaseInsensitive) == 0) {
+            continue;
+        }
+        if (folderMatchKey(siblingName) != matchKey) {
+            continue;
+        }
+        if (reserved.contains(siblingName.toLower())) {
+            continue;
+        }
+        adoptedPath = sibling.absoluteFilePath();
+        ++matches;
+    }
+
+    return matches == 1 ? adoptedPath : targetPath;
 }
 
 QString LuaProfileManager::cppModsFolderForProfile(const QString& presetId) const
