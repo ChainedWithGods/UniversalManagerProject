@@ -9,6 +9,7 @@ Item {
     anchors.fill: parent
 
     property alias gamesManagerWelcomeDialog: gamesManagerWelcomeDialog
+    property alias runtimeWelcomeDialog: runtimeWelcomeDialog
     property alias managerConsoleRestartDialog: managerConsoleRestartDialog
     property alias pathsHelpDialog: pathsHelpDialog
     property alias scanningPopup: scanningPopup
@@ -309,6 +310,293 @@ Item {
                         onClicked: {
                             gamesManagerWelcomeDialog.close()
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: runtimeWelcomeDialog
+        modal: true
+        focus: true
+        closePolicy: Popup.NoAutoClose
+        x: Math.round((settingsPage.width - width) / 2)
+        y: Math.round((settingsPage.height - height) / 2)
+        width: Math.min(640, settingsPage.width - 48)
+        padding: 28
+
+        background: Rectangle {
+            radius: 16
+            border.width: 1
+            border.color: modManager.theme === "Glassmorphic"
+                ? Qt.rgba(255, 255, 255, 0.1)
+                : (modManager.theme === "Crimson" ? Qt.rgba(1, 1, 1, 0.10) : window.borderColor)
+            gradient: modManager.theme === "Cozy" ? settingsDialogCozyGradient
+                    : modManager.theme === "Crimson" ? settingsDialogCrimsonGradient
+                    : modManager.theme === "Wavey" ? settingsDialogWaveyGradient
+                    : null
+
+            color: modManager.theme === "Glassmorphic" ? Qt.rgba(0.10, 0.10, 0.15, 0.98) : "transparent"
+            layer.enabled: true
+            layer.effect: DropShadow {
+                transparentBorder: true
+                radius: modManager.theme === "Glassmorphic" ? 32 : 24
+                samples: modManager.theme === "Glassmorphic" ? 65 : 49
+                color: modManager.theme === "Glassmorphic" ? Qt.rgba(0, 0, 0, 0.5) : Qt.rgba(0, 0, 0, 0.35)
+                horizontalOffset: 0
+                verticalOffset: 10
+            }
+        }
+
+        Overlay.modal: Rectangle {
+            color: Qt.rgba(0, 0, 0, modManager.theme === "Glassmorphic" ? 0.35 : 0.45)
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                Layout.alignment: Qt.AlignRight
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 10
+                    color: runtimeCloseMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+                    border.width: runtimeCloseMouse.containsMouse ? 1 : 0
+                    border.color: window.borderColor
+                    Image {
+                        anchors.centerIn: parent
+                        width: 16
+                        height: 16
+                        source: "qrc:/UniversalModManager/Lucide Icons/x.svg"
+                        sourceSize: Qt.size(32, 32)
+                        opacity: runtimeCloseMouse.containsMouse ? 0.9 : 0.5
+                    }
+                    MouseArea {
+                        id: runtimeCloseMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: runtimeWelcomeDialog.close()
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: "Welcome to Avalonium Runtime Engine!"
+                font.pixelSize: 24
+                font.weight: Font.Bold
+                color: window.textColor
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: "What does each button do?"
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: window.textSecondaryColor
+                wrapMode: Text.WordWrap
+                Layout.topMargin: 4
+            }
+
+            Item { Layout.preferredHeight: 18 }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: runtimePlayCardContent.implicitHeight + 28
+                radius: 14
+                color: Qt.rgba(0, 0, 0, 0.03)
+                border.width: 1
+                border.color: window.borderColor
+
+                ColumnLayout {
+                    id: runtimePlayCardContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Launch & inject"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        color: window.textColor
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.RichText
+                        font.pixelSize: 13
+                        color: window.textSecondaryColor
+                        text:
+                            "Start the game, then load the runtime." +
+                            "<br><br>" +
+                            "<ul style='margin:6px 0 0 18px; padding:0;'>" +
+                            "<li><b>Game Executable Path</b> — filled from the active profile. Browse to pick another .exe.</li>" +
+                            "<li><b>Advanced Injection</b> — inject into a game that is already running. Pick it from the process list and press Refresh.</li>" +
+                            "<li><b>Launch Game</b> — starts the game normally.</li>" +
+                            "<li><b>Inject Avalonium</b> — loads the runtime into the running game.</li>" +
+                            "<li><b>Configure</b> — opens Runtime settings for Lua and C++ mods, SDK, startup delay and the watchdog.</li>" +
+                            "</ul>" +
+                            "<br>If injection is blocked, restart Universal Manager as administrator."
+                    }
+                }
+            }
+
+            Item { Layout.preferredHeight: 12 }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: runtimeCreateCardContent.implicitHeight + 28
+                radius: 14
+                color: Qt.rgba(0, 0, 0, 0.03)
+                border.width: 1
+                border.color: window.borderColor
+
+                ColumnLayout {
+                    id: runtimeCreateCardContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Generate & inspect"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        color: window.textColor
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.RichText
+                        font.pixelSize: 13
+                        color: window.textSecondaryColor
+                        text:
+                            "<ul style='margin:6px 0 0 18px; padding:0;'>" +
+                            "<li><b>Output</b> — folder for Avalonium.log and the generated files. Choose it with Browse.</li>" +
+                            "<li><b>Generate USMAP</b> — dumps the mappings of the running game.</li>" +
+                            "<li><b>Generate SDK</b> — writes the C++ SDK using the SDK Path and Libclang path from Configure Runtime.</li>" +
+                            "<li><b>Engine Globals / Output Explorer</b> — browse discovered engine pointers and runtime output. Copy Globals copies the list.</li>" +
+                            "<li><b>Live Runtime Console</b> — watches Avalonium while the game runs. Copy and Clear control the log.</li>" +
+                            "</ul>"
+                    }
+                }
+            }
+
+            Item { Layout.preferredHeight: 18 }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Layout.alignment: Qt.AlignRight
+
+                CheckBox {
+                    id: runtimeDontShowAgainCheckbox
+                    text: "Don't show this message again"
+                    checked: modManager.runtimeWelcomeShown
+                    onCheckedChanged: modManager.runtimeWelcomeShown = checked
+
+                    indicator: Rectangle {
+                        implicitWidth: 20
+                        implicitHeight: 20
+                        x: runtimeDontShowAgainCheckbox.leftPadding
+                        y: parent.height / 2 - height / 2
+                        radius: 4
+                        color: modManager.theme === "Glassmorphic" ? Qt.rgba(modManager.accentColor.r, modManager.accentColor.g, modManager.accentColor.b, 0.1) : "transparent"
+                        border.color: runtimeDontShowAgainCheckbox.checked ? window.primaryColor : (modManager.theme === "Glassmorphic" ? Qt.rgba(modManager.accentColor.r, modManager.accentColor.g, modManager.accentColor.b, 0.4) : window.borderColor)
+                        border.width: 2
+
+                        Rectangle {
+                            width: 12
+                            height: 12
+                            x: 4
+                            y: 4
+                            radius: 2
+                            color: window.primaryColor
+                            visible: runtimeDontShowAgainCheckbox.checked
+                        }
+                    }
+
+                    contentItem: Text {
+                        text: runtimeDontShowAgainCheckbox.text
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        color: modManager.theme === "Glassmorphic" ? modManager.accentColor : window.textColor
+                        leftPadding: runtimeDontShowAgainCheckbox.indicator.width + 8
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Rectangle {
+                    width: 120
+                    height: 40
+                    radius: 12
+                    color: runtimeLearnMouse.containsMouse
+                        ? Qt.rgba(window.primaryColor.r, window.primaryColor.g, window.primaryColor.b, 0.12)
+                        : "transparent"
+                    border.width: 1
+                    border.color: window.primaryColor
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Learn How"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        color: window.primaryColor
+                    }
+
+                    MouseArea {
+                        id: runtimeLearnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            settingsTabIndex = 0
+                            generalSectionIndex = 8
+                            runtimeWelcomeDialog.close()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 120
+                    height: 40
+                    radius: 12
+                    color: runtimeOkMouse.containsMouse ? Qt.lighter(window.primaryColor, 1.05) : window.primaryColor
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.18)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Got it"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        color: "white"
+                    }
+
+                    MouseArea {
+                        id: runtimeOkMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: runtimeWelcomeDialog.close()
                     }
                 }
             }
