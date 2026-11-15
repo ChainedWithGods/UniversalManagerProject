@@ -1467,6 +1467,8 @@ Item {
                                 sourceSize: Qt.size(18, 18)
                                 smooth: true
                                 layer.enabled: true
+                                layer.smooth: true
+                                layer.textureSize: Qt.size(width * 2, height * 2)
                                 layer.effect: ColorOverlay {
                                     color: window.primaryColor
                                 }
