@@ -316,7 +316,7 @@ bool ModManager::applyPresetToCurrentState(const QVariantMap& preset) {
     }
 
     if (m_luaProfileManager && !presetId.isEmpty()) {
-        const QString cppRoot = m_luaProfileManager->cppModsFolderForProfile(presetId);
+        const QString cppRoot = m_luaProfileManager->cppProfileFolderPath(presetId, presetName);
         setAvaloniumCppModsPath(!cppRoot.isEmpty() && QDir(cppRoot).exists() ? cppRoot : QString());
     }
 
@@ -675,13 +675,12 @@ void ModManager::ensureLuaProfileFolders() {
     }
 
     const QString defaultMods = defaultLuaModsDirectory();
-    if (defaultMods.isEmpty()) {
-        return;
-    }
 
     struct PendingProfile {
         QString name;
         QString folderPath;
+        QString cppFolderPath;
+        bool seedLua = false;
     };
     QList<PendingProfile> pending;
 
@@ -697,21 +696,30 @@ void ModManager::ensureLuaProfileFolders() {
             continue;
         }
 
+        bool seedLua = false;
         const QString folderPath = m_luaProfileManager->profileFolderPath(id, name);
-        if (folderPath.isEmpty() || QDir(folderPath).exists()) {
-            continue;
+        if (!defaultMods.isEmpty() && !folderPath.isEmpty() && !QDir(folderPath).exists()) {
+
+            const QString configuredPath = preset.value(QStringLiteral("luaModsPath")).toString().trimmed();
+            if (configuredPath.isEmpty()
+                || QDir::cleanPath(configuredPath).compare(QDir::cleanPath(folderPath),
+                                                           Qt::CaseInsensitive) == 0) {
+                seedLua = true;
+            }
         }
 
-        const QString configuredPath = preset.value(QStringLiteral("luaModsPath")).toString().trimmed();
-        if (!configuredPath.isEmpty()
-            && QDir::cleanPath(configuredPath).compare(QDir::cleanPath(folderPath),
-                                                       Qt::CaseInsensitive) != 0) {
+        const QString cppFolderPath = m_luaProfileManager->cppModsFolderForProfile(id);
+        const bool needsCppFolder = !cppFolderPath.isEmpty() && !QDir(cppFolderPath).exists();
+
+        if (!seedLua && !needsCppFolder) {
             continue;
         }
 
         PendingProfile profile;
         profile.name = name;
         profile.folderPath = folderPath;
+        profile.cppFolderPath = cppFolderPath;
+        profile.seedLua = seedLua;
         pending.append(profile);
     }
 
@@ -722,7 +730,15 @@ void ModManager::ensureLuaProfileFolders() {
     QThreadPool::globalInstance()->start([this, pending, defaultMods]() {
         QVariantList restored;
         for (const PendingProfile& profile : pending) {
-            if (LuaProfileManager::seedProfileFolderAt(profile.folderPath, defaultMods, nullptr)) {
+            bool luaRestored = false;
+            if (profile.seedLua
+                && LuaProfileManager::seedProfileFolderAt(profile.folderPath, defaultMods, nullptr)) {
+                luaRestored = true;
+            }
+            if (!profile.cppFolderPath.isEmpty() && !QDir(profile.cppFolderPath).exists()) {
+                QDir().mkpath(profile.cppFolderPath);
+            }
+            if (luaRestored) {
                 QVariantMap entry;
                 entry.insert(QStringLiteral("name"), profile.name);
                 entry.insert(QStringLiteral("path"), profile.folderPath);
@@ -918,6 +934,11 @@ void ModManager::renamePreset(const QString& presetId, const QString& newName) {
                     m_gamePresets[i] = preset;
                     if (m_activePresetId == presetId && !preset.value("useSharedLuaMods").toBool()) {
                         setAvaloniumLuaModsPath(newFolder);
+                    }
+                    if (m_activePresetId == presetId) {
+                        const QString cppFolder = m_luaProfileManager->cppModsFolderForProfile(presetId);
+                        if (!cppFolder.isEmpty() && QDir(cppFolder).exists())
+                            setAvaloniumCppModsPath(cppFolder);
                     }
                 }
             }
