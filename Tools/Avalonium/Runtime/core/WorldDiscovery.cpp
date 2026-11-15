@@ -25,6 +25,19 @@ bool LooksLikeWorld(const EngineState &state, const void *candidate) {
   if (!cls)
     return false;
 
+  const std::string objectName = GetObjectNameStr(state, object);
+  if (objectName.empty() || objectName == "None" ||
+      objectName.rfind("Default__", 0) == 0)
+  {
+    return false;
+  }
+
+  UObject *outer = GetObjectOuter(state, object);
+  if (!outer)
+    return false;
+  if (state.UPackageClass && GetObjectClass(state, outer) != state.UPackageClass)
+    return false;
+
   if (state.UWorldClass)
     return IsStructA(state, reinterpret_cast<UStruct *>(cls),
                      reinterpret_cast<UStruct *>(state.UWorldClass));
