@@ -619,6 +619,7 @@ qt_add_qml_module(UniversalManager
         "Lucide Icons/rocket.svg"
         "Lucide Icons/save.svg"
         "Lucide Icons/shield-check.svg"
+        "Lucide Icons/shield-alert.svg"
         "Lucide Icons/circle-x.svg"
         "Lucide Icons/circle-question-mark.svg"
         "Lucide Icons/pencil.svg"
