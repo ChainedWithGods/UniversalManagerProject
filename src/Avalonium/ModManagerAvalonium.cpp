@@ -569,6 +569,27 @@ QString ModManager::activeCppModsRoot() const
     return m_luaProfileManager->cppModsFolderForProfile(m_activePresetId);
 }
 
+int ModManager::cppModCount(const QString& folderPath) const
+{
+    const QString root = QDir::fromNativeSeparators(folderPath.trimmed());
+    if (root.isEmpty() || !QFileInfo(root).isDir()) {
+        return -1;
+    }
+
+    int count = 0;
+    const QFileInfoList entries = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo& entry : entries) {
+        const QString name = entry.fileName();
+        const QDir modDir(entry.absoluteFilePath());
+        if (QFileInfo(modDir.filePath(QStringLiteral("dlls/main.dll"))).isFile()
+            || QFileInfo(modDir.filePath(QStringLiteral("dlls/%1.dll").arg(name))).isFile()
+            || QFileInfo(modDir.filePath(name + QStringLiteral(".dll"))).isFile()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 QString ModManager::saveAvaloniumConfig(const QVariantMap& config) {
     const QString configPath = avaloniumConfigPath();
     if (configPath.isEmpty()) {
