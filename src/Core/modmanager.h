@@ -82,6 +82,7 @@ class ModManager : public QObject
     Q_PROPERTY(bool pakViewerHideUI READ pakViewerHideUI WRITE setPakViewerHideUI NOTIFY pakViewerHideUIChanged)
     Q_PROPERTY(bool welcomeShown READ welcomeShown WRITE setWelcomeShown NOTIFY welcomeShownChanged)
     Q_PROPERTY(bool gamesManagerWelcomeShown READ gamesManagerWelcomeShown WRITE setGamesManagerWelcomeShown NOTIFY gamesManagerWelcomeShownChanged)
+    Q_PROPERTY(bool runtimeWelcomeShown READ runtimeWelcomeShown WRITE setRuntimeWelcomeShown NOTIFY runtimeWelcomeShownChanged)
     Q_PROPERTY(bool showSplashScreen READ showSplashScreen WRITE setShowSplashScreen NOTIFY showSplashScreenChanged)
     Q_PROPERTY(bool runAsAdministrator READ runAsAdministrator WRITE setRunAsAdministrator NOTIFY runAsAdministratorChanged)
     Q_PROPERTY(bool isRunningAsAdmin READ isRunningAsAdmin NOTIFY isRunningAsAdminChanged)
@@ -238,6 +239,7 @@ public:
     bool pakViewerHideUI() const;
     bool welcomeShown() const;
     bool gamesManagerWelcomeShown() const;
+    bool runtimeWelcomeShown() const;
     bool showSplashScreen() const;
     bool runAsAdministrator() const;
     bool isRunningAsAdmin() const;
@@ -425,6 +427,7 @@ public slots:
     void setPakViewerHideUI(bool enabled);
     void setWelcomeShown(bool shown);
     void setGamesManagerWelcomeShown(bool shown);
+    void setRuntimeWelcomeShown(bool shown);
     void setShowSplashScreen(bool show);
     void setRunAsAdministrator(bool runAsAdmin);
     void setNotificationsEnabled(bool enabled);
@@ -727,6 +730,7 @@ signals:
     void pakViewerHideUIChanged();
     void welcomeShownChanged();
     void gamesManagerWelcomeShownChanged();
+    void runtimeWelcomeShownChanged();
     void showSplashScreenChanged();
     void runAsAdministratorChanged();
     void isRunningAsAdminChanged();
@@ -956,6 +960,7 @@ private:
     bool m_pakViewerHideUI = false;
     bool m_welcomeShown = false;
     bool m_gamesManagerWelcomeShown = false;
+    bool m_runtimeWelcomeShown = false;
     bool m_showSplashScreen = true;
     bool m_runAsAdministrator = false;
     bool m_notificationsEnabled = true;
