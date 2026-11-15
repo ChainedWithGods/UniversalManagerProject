@@ -508,6 +508,18 @@ void ModManager::setGamesManagerWelcomeShown(bool shown) {
     }
 }
 
+bool ModManager::runtimeWelcomeShown() const {
+    return m_runtimeWelcomeShown;
+}
+
+void ModManager::setRuntimeWelcomeShown(bool shown) {
+    if (m_runtimeWelcomeShown != shown) {
+        m_runtimeWelcomeShown = shown;
+        emit runtimeWelcomeShownChanged();
+        saveSettings();
+    }
+}
+
 bool ModManager::showSplashScreen() const {
     return m_showSplashScreen;
 }
