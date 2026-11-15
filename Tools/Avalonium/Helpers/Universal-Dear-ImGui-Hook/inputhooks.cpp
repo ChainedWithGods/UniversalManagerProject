@@ -200,7 +200,7 @@ namespace inputhook {
                     return TRUE;
             }
 
-            if (IsMouseMessage(uMsg))
+            if (IsMouseMessage(uMsg) || uMsg == WM_INPUT)
             {
                 return TRUE;
             }
