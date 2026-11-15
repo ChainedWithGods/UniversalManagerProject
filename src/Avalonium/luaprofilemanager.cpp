@@ -410,6 +410,12 @@ QString LuaProfileManager::createProfileFolder(const QString& presetId, const QS
         return QStringLiteral("Could not resolve the profile for the Lua folder");
     }
 
+    const QString cppFolderPath = cppProfileFolderPath(presetId, presetName);
+    if (!cppFolderPath.isEmpty() && !QDir().mkpath(cppFolderPath)) {
+        qWarning() << "[CppProfiles] could not create profile folder:"
+                   << QDir::toNativeSeparators(cppFolderPath);
+    }
+
     QString error;
     if (!seedProfileFolder(folderPath, &error)) {
         return error;
@@ -437,12 +443,22 @@ QString LuaProfileManager::deleteProfileFolder(const QString& presetId)
         QDir(uuidPath).removeRecursively();
     }
 
+    const QString cppFolderPath = cppProfileFolderPath(presetId);
+    if (!cppFolderPath.isEmpty() && QDir(cppFolderPath).exists()) {
+        if (!QDir(cppFolderPath).removeRecursively()) {
+            qWarning() << "[CppProfiles] failed to delete profile folder:"
+                       << QDir::toNativeSeparators(cppFolderPath);
+        }
+    }
+
     emit profileFoldersChanged();
     return QString();
 }
 
 QString LuaProfileManager::renameProfileFolder(const QString& presetId, const QString& oldPresetName)
 {
+    renameCppProfileFolder(presetId, oldPresetName);
+
     const QString root = presetsFolderRoot();
     if (root.isEmpty()) {
         return QString();
@@ -496,19 +512,50 @@ QString LuaProfileManager::luaModsFolderForProfile(const QString& presetId) cons
     return QString();
 }
 
-QString LuaProfileManager::cppModsFolderForProfile(const QString& presetId) const
+QString LuaProfileManager::cppProfilesRoot() const
 {
-    if (!m_modManager || presetId.trimmed().isEmpty()) {
+    if (!m_modManager) {
         return QString();
     }
     const QString dllDir = m_modManager->avaloniumDirectory();
     if (dllDir.isEmpty()) {
         return QString();
     }
-    const QString folderName = folderNameForPresetId(presetId);
+    return QDir(dllDir).filePath(QString::fromLatin1(kCppProfilesFolderName));
+}
+
+QString LuaProfileManager::cppProfileFolderPath(const QString& presetId, const QString& explicitName) const
+{
+    const QString root = cppProfilesRoot();
+    if (root.isEmpty()) {
+        return QString();
+    }
+    const QString folderName = folderNameForPresetId(presetId, explicitName);
     if (folderName.isEmpty()) {
         return QString();
     }
-    const QString root = QDir(dllDir).filePath(QString::fromLatin1(kCppProfilesFolderName));
-    return QDir::fromNativeSeparators(QDir(root).filePath(folderName));
+    return QDir(root).filePath(folderName);
+}
+
+QString LuaProfileManager::cppModsFolderForProfile(const QString& presetId) const
+{
+    const QString path = cppProfileFolderPath(presetId);
+    return path.isEmpty() ? QString() : QDir::fromNativeSeparators(path);
+}
+
+void LuaProfileManager::renameCppProfileFolder(const QString& presetId, const QString& oldPresetName)
+{
+    const QString targetPath = cppProfileFolderPath(presetId);
+    const QString oldPath = cppProfileFolderPath(presetId, oldPresetName);
+    if (targetPath.isEmpty() || oldPath.isEmpty()
+        || QDir::cleanPath(oldPath) == QDir::cleanPath(targetPath)) {
+        return;
+    }
+    if (!QDir(oldPath).exists() || QDir(targetPath).exists()) {
+        return;
+    }
+    if (!QDir().rename(oldPath, targetPath)) {
+        qWarning() << "[CppProfiles] failed to rename folder from" << QDir::toNativeSeparators(oldPath)
+                   << "to" << QDir::toNativeSeparators(targetPath);
+    }
 }
