@@ -913,6 +913,8 @@ Item {
         property int watchdogOtherThreadStackDepth: 8
 
         property string selectedProfileId: ""
+
+        property string selectedCppProfileId: ""
         property bool sdkValidation: false
         property bool generateBuildSystem: false
         property bool sdkLibclangGeneration: false
@@ -991,6 +993,18 @@ Item {
                 }
             }
 
+            selectedCppProfileId = ""
+            var currentCppNormPath = norm(cppModsPath)
+            if (currentCppNormPath.length > 0) {
+                for (var ci = 0; ci < allIds.length; ci++) {
+                    var cppFolder = luaProfileManager.cppModsFolderForProfile(allIds[ci])
+                    if (cppFolder && norm(cppFolder) === currentCppNormPath) {
+                        selectedCppProfileId = allIds[ci]
+                        break
+                    }
+                }
+            }
+
             sdkValidation = boolValue(config.SDKValidation)
             generateBuildSystem = boolValue(config.GenerateBuildSystem)
             sdkLibclangGeneration = boolValue(config.SDKLibclangGeneration)
@@ -1004,7 +1018,7 @@ Item {
                 toastNotification.show(config.error)
             }
             luaProfilePicker.rebuildEntries()
-            luaProfilePicker.currentIndex = luaProfilePicker.findProfileIndex(selectedProfileId)
+            cppProfilePicker.rebuildEntries()
             luaModsManagerView.reset()
             open()
         }
@@ -2291,10 +2305,35 @@ Item {
                                         onToggled: (value) => runtimeConfigDialog.enableLuaMods = value
                                     }
 
-                                    LuaProfilePicker {
+                                    ProfilePicker {
                                         id: luaProfilePicker
                                         visible: runtimeConfigDialog.enableLuaMods
                                         height: 46
+                                        selectedId: runtimeConfigDialog.selectedProfileId
+                                        placeholderText: "Select a Lua profile..."
+                                        emptyText: "No Lua profiles found"
+                                        toastPrefix: "Lua profile"
+                                        sharedModsBase: {
+                                            var p = modManager.defaultLuaModsDirectory()
+                                            return p ? String(p).replace(/\\/g, "/") : ""
+                                        }
+                                        profileFolderProvider: function(profileId) {
+                                            return modManager.luaProfileFolderPath(profileId)
+                                        }
+                                        modCountProvider: function(folder) {
+                                            var res = modManager.listLuaMods(folder)
+                                            if (!res || res.length === 0) return -1
+                                            if (res[0].error !== undefined) return -1
+                                            var n = 0
+                                            for (var k = 0; k < res.length; k++) {
+                                                if (res[k].error === undefined) n++
+                                            }
+                                            return n
+                                        }
+                                        onProfileSelected: function(profileId, folderPath) {
+                                            runtimeConfigDialog.selectedProfileId = profileId
+                                            runtimeConfigDialog.luaModsPath = folderPath
+                                        }
                                     }
 
                                     Rectangle {
@@ -2407,6 +2446,32 @@ Item {
                                         label: "Enable C++ Mods"
                                         checked: runtimeConfigDialog.enableCppMods
                                         onToggled: (value) => runtimeConfigDialog.enableCppMods = value
+                                    }
+
+                                    ProfilePicker {
+                                        id: cppProfilePicker
+                                        visible: runtimeConfigDialog.enableCppMods
+                                        height: 46
+                                        selectedId: runtimeConfigDialog.selectedCppProfileId
+                                        placeholderText: "Select a C++ profile..."
+                                        emptyText: "No C++ profiles found"
+                                        toastPrefix: "C++ profile"
+                                        sharedModsBase: {
+                                            var p = modManager.avaloniumDirectory()
+                                            return p ? String(p).replace(/\\/g, "/") + "/Mods/Avalonium" : ""
+                                        }
+                                        profileFolderProvider: function(profileId) {
+                                            var folder = luaProfileManager.cppModsFolderForProfile(profileId)
+                                            if (!folder || folder.length === 0) return ""
+                                            return modManager.cppModCount(folder) >= 0 ? folder : ""
+                                        }
+                                        modCountProvider: function(folder) {
+                                            return modManager.cppModCount(folder)
+                                        }
+                                        onProfileSelected: function(profileId, folderPath) {
+                                            runtimeConfigDialog.selectedCppProfileId = profileId
+                                            runtimeConfigDialog.cppModsPath = folderPath
+                                        }
                                     }
 
                                     Rectangle {
@@ -3185,7 +3250,6 @@ Item {
                 }
             }
             runtimeConfigDialog.selectedProfileId = matchedId
-            luaProfilePicker.currentIndex = luaProfilePicker.findProfileIndex(matchedId)
         }
     }
 
@@ -3195,6 +3259,18 @@ Item {
         onAccepted: {
             var raw = selectedFolder.toString().replace("file:///", "").replace(/^\/([A-Za-z]:)/, "$1")
             runtimeConfigDialog.cppModsPath = raw
+            var norm = function(p) { return (p || "").toString().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() }
+            var nPath = norm(raw)
+            var matchedId = ""
+            var allIds = luaProfileManager.profileIds || []
+            for (var i = 0; i < allIds.length; i++) {
+                var folder = luaProfileManager.cppModsFolderForProfile(allIds[i])
+                if (folder && norm(folder) === nPath) {
+                    matchedId = allIds[i]
+                    break
+                }
+            }
+            runtimeConfigDialog.selectedCppProfileId = matchedId
         }
     }
 
@@ -3207,8 +3283,18 @@ Item {
         }
     }
 
-    component LuaProfilePicker : Rectangle {
-        id: luaProfilePickerRoot
+    component ProfilePicker : Rectangle {
+        id: profilePickerRoot
+
+        property string selectedId: ""
+        property string placeholderText: "Select a profile..."
+        property string emptyText: "No profiles found"
+        property string toastPrefix: "Profile"
+        property var profileFolderProvider: null
+        property var modCountProvider: null
+        property string sharedModsBase: ""
+        signal profileSelected(string profileId, string folderPath)
+
         Layout.fillWidth: true
         Layout.preferredHeight: 46
         radius: 10
@@ -3222,7 +3308,6 @@ Item {
         Behavior on color { ColorAnimation { duration: 120 } }
         Behavior on border.color { ColorAnimation { duration: 120 } }
 
-                property int currentIndex: 0
         property string filterText: ""
 
         readonly property var filteredEntries: {
@@ -3241,14 +3326,7 @@ Item {
         }
 
         function modCountForFolder(folder) {
-            var res = modManager.listLuaMods(folder)
-            if (!res || res.length === 0) return -1
-            if (res[0].error !== undefined) return -1
-            var n = 0
-            for (var k = 0; k < res.length; k++) {
-                if (res[k].error === undefined) n++
-            }
-            return n
+            return modCountProvider ? modCountProvider(folder) : -1
         }
 
         function badgeTextFor(entry) {
@@ -3257,8 +3335,7 @@ Item {
         }
 
         function isEntrySelected(entry) {
-            var cur = profileEntries.length > currentIndex ? profileEntries[currentIndex] : null
-            return cur !== null && cur.id === entry.id
+            return entry.id === selectedId
         }
 
         property var profileEntries: []
@@ -3276,7 +3353,7 @@ Item {
                         break
                     }
                 }
-                var folder = modManager.luaProfileFolderPath(pid)
+                var folder = profileFolderProvider ? profileFolderProvider(pid) : ""
                 if (folder && folder.length > 0) {
                     entries.push({ id: pid, name: pname || pid, folder: folder, count: modCountForFolder(folder) })
                 }
@@ -3287,47 +3364,20 @@ Item {
 
         Connections {
             target: luaProfileManager
-            function onProfileFoldersChanged() { luaProfilePickerRoot.rebuildEntries() }
-            function onProfilesChanged() { luaProfilePickerRoot.rebuildEntries() }
+            function onProfileFoldersChanged() { profilePickerRoot.rebuildEntries() }
+            function onProfilesChanged() { profilePickerRoot.rebuildEntries() }
         }
         Connections {
             target: modManager
-            function onGamePresetsChanged() { luaProfilePickerRoot.rebuildEntries() }
+            function onGamePresetsChanged() { profilePickerRoot.rebuildEntries() }
         }
 
-        function findProfileIndex(profileId) {
-            for (var i = 0; i < profileEntries.length; i++) {
-                if (profileEntries[i].id === profileId) return i
-            }
-            return 0
-        }
-
-        function selectIndex(idx) {
-            if (idx < 0 || idx >= profileEntries.length) return
-            currentIndex = idx
-            var entry = profileEntries[idx]
-            runtimeConfigDialog.selectedProfileId = entry.id
-
-            runtimeConfigDialog.luaModsPath = entry.folder || ""
-        }
         function selectEntry(entry) {
-            for (var i = 0; i < profileEntries.length; i++) {
-                if (profileEntries[i].id === entry.id) {
-                    selectIndex(i)
-                    break
-                }
-            }
-        }
-
-        readonly property string sharedModsBase: {
-            var p = modManager.defaultLuaModsDirectory()
-            return p ? String(p).replace(/\\/g, "/") : ""
+            profileSelected(entry.id, entry.folder || "")
         }
 
         onVisibleChanged: {
-            if (visible) {
-                currentIndex = findProfileIndex(runtimeConfigDialog.selectedProfileId)
-            }
+            if (visible) rebuildEntries()
         }
 
         RowLayout {
@@ -3338,13 +3388,16 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: (luaProfilePickerRoot.currentIndex >= 0
-                && luaProfilePickerRoot.currentIndex < luaProfilePickerRoot.profileEntries.length)
-                ? luaProfilePickerRoot.profileEntries[luaProfilePickerRoot.currentIndex].name
-                : "Select a Lua profile..."
+                text: {
+                    for (var i = 0; i < profilePickerRoot.profileEntries.length; i++) {
+                        if (profilePickerRoot.profileEntries[i].id === profilePickerRoot.selectedId)
+                            return profilePickerRoot.profileEntries[i].name
+                    }
+                    return profilePickerRoot.placeholderText
+                }
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
-                color: runtimeConfigDialog.selectedProfileId === "" ? window.textSecondaryColor : window.textColor
+                color: profilePickerRoot.selectedId === "" ? window.textSecondaryColor : window.textColor
                 elide: Text.ElideRight
             }
 
@@ -3366,7 +3419,7 @@ Item {
                 if (profilePopup.visible) {
                     profilePopup.close()
                 } else {
-                    luaProfilePickerRoot.rebuildEntries()
+                    profilePickerRoot.rebuildEntries()
                     profilePopup.open()
                 }
             }
@@ -3375,8 +3428,8 @@ Item {
         Popup {
             id: profilePopup
             x: 0
-            y: luaProfilePickerRoot.height + 6
-            width: luaProfilePickerRoot.width
+            y: profilePickerRoot.height + 6
+            width: profilePickerRoot.width
             height: Math.max(180, Math.min(340, profileList.contentHeight + 77))
             padding: 0
             focus: true
@@ -3384,7 +3437,7 @@ Item {
 
             onOpened: {
                 profileSearchInput.text = ""
-                luaProfilePickerRoot.rebuildEntries()
+                profilePickerRoot.rebuildEntries()
             }
 
             background: Rectangle {
@@ -3445,7 +3498,7 @@ Item {
                                 visible: !profileSearchInput.text && !profileSearchInput.activeFocus
                             }
 
-                            onTextChanged: luaProfilePickerRoot.filterText = text
+                            onTextChanged: profilePickerRoot.filterText = text
                         }
 
                         Text {
@@ -3479,7 +3532,7 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 4
-                    model: luaProfilePickerRoot.filteredEntries
+                    model: profilePickerRoot.filteredEntries
 
                     ScrollBar.vertical: ScrollBar {
                         policy: ScrollBar.AsNeeded
@@ -3494,12 +3547,12 @@ Item {
                             ? (modManager.theme === "Glassmorphic"
                                 ? Qt.rgba(modManager.accentColor.r, modManager.accentColor.g, modManager.accentColor.b, 0.18)
                                 : Qt.rgba(window.primaryColor.r, window.primaryColor.g, window.primaryColor.b, 0.12))
-                            : (luaProfilePickerRoot.isEntrySelected(modelData)
+                            : (profilePickerRoot.isEntrySelected(modelData)
                                 ? (modManager.theme === "Glassmorphic"
                                     ? Qt.rgba(modManager.accentColor.r, modManager.accentColor.g, modManager.accentColor.b, 0.10)
                                     : Qt.rgba(window.primaryColor.r, window.primaryColor.g, window.primaryColor.b, 0.08))
                                 : "transparent")
-                        border.width: luaProfilePickerRoot.isEntrySelected(modelData) ? 1 : 0
+                        border.width: profilePickerRoot.isEntrySelected(modelData) ? 1 : 0
                         border.color: window.primaryColor
                         Behavior on color { ColorAnimation { duration: 120 } }
 
@@ -3519,8 +3572,8 @@ Item {
                                     Layout.fillWidth: true
                                     text: modelData.name || "Unknown"
                                     font.pixelSize: 13
-                                    font.weight: luaProfilePickerRoot.isEntrySelected(modelData) ? Font.Bold : Font.DemiBold
-                                    color: luaProfilePickerRoot.isEntrySelected(modelData)
+                                    font.weight: profilePickerRoot.isEntrySelected(modelData) ? Font.Bold : Font.DemiBold
+                                    color: profilePickerRoot.isEntrySelected(modelData)
                                         ? (modManager.theme === "Glassmorphic" ? modManager.accentColor : window.primaryColor)
                                         : window.textColor
                                     elide: Text.ElideRight
@@ -3537,7 +3590,7 @@ Item {
                                     Text {
                                         id: profileBadgeText
                                         anchors.centerIn: parent
-                                        text: luaProfilePickerRoot.badgeTextFor(modelData)
+                                        text: profilePickerRoot.badgeTextFor(modelData)
                                         font.pixelSize: 11
                                         font.weight: Font.Medium
                                         color: window.textSecondaryColor
@@ -3562,16 +3615,16 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                luaProfilePickerRoot.selectEntry(modelData)
+                                profilePickerRoot.selectEntry(modelData)
                                 profilePopup.close()
-                                if (toastNotification) toastNotification.show("Lua profile: " + (modelData.name || "Default"))
+                                if (toastNotification) toastNotification.show(profilePickerRoot.toastPrefix + ": " + (modelData.name || "Default"))
                             }
                         }
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        text: luaProfilePickerRoot.profileEntries.length === 0 ? "No Lua profiles found" : "No matching profiles"
+                        text: profilePickerRoot.profileEntries.length === 0 ? profilePickerRoot.emptyText : "No matching profiles"
                         font.pixelSize: 13
                         color: window.textSecondaryColor
                         visible: profileList.count === 0
