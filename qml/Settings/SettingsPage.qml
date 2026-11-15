@@ -806,6 +806,9 @@ Pane {
                 if (currentIndex === 1 && !modManager.gamesManagerWelcomeShown) {
                     gamesManagerWelcomeDialog.open()
                 }
+                if (currentIndex === 3 && !modManager.runtimeWelcomeShown) {
+                    runtimeWelcomeDialog.open()
+                }
             }
         }
 
@@ -1414,6 +1417,7 @@ Pane {
     }
 
     readonly property alias gamesManagerWelcomeDialog: settingsDialogs.gamesManagerWelcomeDialog
+    readonly property alias runtimeWelcomeDialog: settingsDialogs.runtimeWelcomeDialog
     readonly property alias managerConsoleRestartDialog: settingsDialogs.managerConsoleRestartDialog
     readonly property alias pathsHelpDialog: settingsDialogs.pathsHelpDialog
     readonly property alias scanningPopup: settingsDialogs.scanningPopup
