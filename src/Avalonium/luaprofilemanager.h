@@ -55,6 +55,9 @@ private:
 
     QString folderPathForName(const QString& presetId, const QString& displayName) const;
     QString presetsFolderRoot() const;
+    QString cppProfilesRoot() const;
+    QString cppProfileFolderPath(const QString& presetId, const QString& explicitName = QString()) const;
+    void renameCppProfileFolder(const QString& presetId, const QString& oldPresetName);
     bool seedProfileFolder(const QString& folderPath, QString* errorOut);
 
     ModManager* m_modManager = nullptr;
