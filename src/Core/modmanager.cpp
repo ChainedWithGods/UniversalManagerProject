@@ -351,6 +351,7 @@ void ModManager::saveSettings() {
     settingsObj["pakViewerHideUI"] = m_pakViewerHideUI;
     settingsObj["welcomeShown"] = m_welcomeShown;
     settingsObj["gamesManagerWelcomeShown"] = m_gamesManagerWelcomeShown;
+    settingsObj["runtimeWelcomeShown"] = m_runtimeWelcomeShown;
     settingsObj["showSplashScreen"] = m_showSplashScreen;
     settingsObj["runAsAdministrator"] = m_runAsAdministrator;
     settingsObj["notificationsEnabled"] = m_notificationsEnabled;
@@ -519,6 +520,7 @@ void ModManager::loadSettings() {
             m_pakViewerHideUI = obj.value("pakViewerHideUI").toBool(false);
             m_welcomeShown = obj.value("welcomeShown").toBool(false);
             m_gamesManagerWelcomeShown = obj.value("gamesManagerWelcomeShown").toBool(false);
+            m_runtimeWelcomeShown = obj.value("runtimeWelcomeShown").toBool(false);
             m_showSplashScreen = obj.value("showSplashScreen").toBool(true);
             m_runAsAdministrator = obj.value("runAsAdministrator").toBool(false);
             m_notificationsEnabled = obj.value("notificationsEnabled").toBool(true);
