@@ -555,6 +555,8 @@ public slots:
     Q_INVOKABLE bool isPresetUsingSharedLuaMods(const QString& presetId = QString()) const;
     Q_INVOKABLE QString avaloniumConfigWriteBlockReason() const;
     Q_INVOKABLE QVariantList listLuaMods(const QString& luaModsPath = QString()) const;
+
+    Q_INVOKABLE int cppModCount(const QString& folderPath) const;
     Q_INVOKABLE QString setLuaModEnabled(const QString& modName, bool enabled, const QString& luaModsPath = QString());
 
     Q_INVOKABLE QString registerLuaModsDisabled(const QString& luaModsPath = QString());
