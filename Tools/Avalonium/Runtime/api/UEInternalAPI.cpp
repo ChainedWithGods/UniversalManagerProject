@@ -3,6 +3,7 @@
 #include "../core/FunctionFinder.h"
 #include "../core/ObjectIndex.h"
 #include "../core/RuntimeConfig.h"
+#include "../core/WorldDiscovery.h"
 #include <cstring>
 #include <vector>
 #include <string>
@@ -74,7 +75,7 @@ UE_API const char* GetStatus() {
         g_State.GameName[0] ? g_State.GameName : "Unknown",
         g_State.bInitialized ? "YES" : "NO",
         g_State.UEMajor, g_State.UEMinor,
-        g_State.GUObjectArray, g_State.GNames, g_State.GWorld,
+        g_State.GUObjectArray, g_State.GNames, EngineDiscovery::GetLiveWorld(g_State),
         g_State.GMalloc, g_State.GNatives, g_State.GUObjectHashTables,
         g_State.GEngine,
         g_State.ProcessEvent_VTableIdx,
@@ -108,7 +109,7 @@ UE_API const char* GetDetectedVersion() {
 
 UE_API void* GetGUObjectArray() { return g_State.GUObjectArray; }
 UE_API void* GetFNamePool()     { return g_State.GNames; }
-UE_API void* GetGWorld()        { return g_State.GWorld; }
+UE_API void* GetGWorld()        { return EngineDiscovery::GetLiveWorld(g_State); }
 UE_API void* GetGMalloc()       { return g_State.GMalloc; }
 UE_API void* GetGNatives()      { return g_State.GNatives; }
 UE_API void* GetGUObjectHashTables() { return g_State.GUObjectHashTables; }

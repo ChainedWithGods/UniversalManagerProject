@@ -27,6 +27,7 @@
 #include "../core/ObjectArray.h"
 #include "../core/ObjectIndex.h"
 #include "../core/ObjectUtils.h"
+#include "../core/WorldDiscovery.h"
 #include "../lua/LuaHookManager.h"
 #include "../utils/SafeMemory.h"
 
@@ -210,11 +211,7 @@ namespace Avalonium::CppMods
             UObject* outerObject = static_cast<UObject*>(outer);
             if (!outerObject)
             {
-                outerObject = g_State.GWorld
-                                  ? static_cast<UObject*>(g_State.GWorld)
-                                  : (g_State.GWorldPtr
-                                         ? static_cast<UObject*>(*g_State.GWorldPtr)
-                                         : nullptr);
+                outerObject = EngineDiscovery::GetLiveWorld(g_State);
             }
             if (!outerObject)
             {
@@ -232,9 +229,7 @@ namespace Avalonium::CppMods
 
         void* ApiGetWorld()
         {
-            if (g_State.GWorld) return g_State.GWorld;
-            if (g_State.GWorldPtr) return *g_State.GWorldPtr;
-            return nullptr;
+            return EngineDiscovery::GetLiveWorld(g_State);
         }
 
         bool ApiIsValidObject(void* object)

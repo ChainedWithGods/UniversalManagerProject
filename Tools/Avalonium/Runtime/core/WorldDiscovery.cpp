@@ -1,12 +1,14 @@
 #include "WorldDiscovery.h"
 #include "NameResolution.h"
 #include "ObjectArray.h"
+#include "ObjectIndex.h"
 #include "ObjectUtils.h"
 #include "FunctionFinder.h"
 #include "Logger.h"
 #include "../utils/SafeMemory.h"
 #include "../console/ConsoleInternal.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <unordered_map>
 
@@ -36,7 +38,60 @@ bool LooksLikeWorld(const EngineState &state, const void *candidate) {
   return false;
 }
 
+UObject *FindWorldThroughController(EngineState &state) {
+  static UObject *s_CachedController = nullptr;
+  static std::chrono::steady_clock::time_point s_LastScan{};
+
+  auto WorldFromController = [&](UObject *controller) -> UObject * {
+    if (!controller || !SafeMem_IsReadable(controller, 0x28)) return nullptr;
+    if (IsPendingKillObject(state, controller)) return nullptr;
+    UObject *outer = GetObjectOuter(state, controller);
+    for (int depth = 0; outer && depth < 8; ++depth) {
+      if (LooksLikeWorld(state, outer) && !IsPendingKillObject(state, outer))
+        return outer;
+      outer = GetObjectOuter(state, outer);
+    }
+    return nullptr;
+  };
+
+  if (UObject *world = WorldFromController(s_CachedController)) return world;
+  s_CachedController = nullptr;
+
+  const auto now = std::chrono::steady_clock::now();
+  if (s_LastScan.time_since_epoch().count() != 0 &&
+      now - s_LastScan < std::chrono::seconds(1))
+  {
+    return nullptr;
+  }
+  s_LastScan = now;
+
+  const int32_t count = GetObjectCount(state);
+  for (int32_t index = count - 1; index >= 0; --index) {
+    UObject *object = GetObjectByIndex(state, index);
+    if (!object || !SafeMem_IsReadable(object, 0x28)) continue;
+
+    UClass *cls = GetObjectClass(state, object);
+    if (!cls) continue;
+    const std::string className =
+        GetObjectNameStr(state, reinterpret_cast<UObject *>(cls));
+    if (className.find("PlayerController") == std::string::npos) continue;
+
+    const std::string name = GetObjectNameStr(state, object);
+    if (name.rfind("Default__", 0) == 0) continue;
+
+    UObject *world = WorldFromController(object);
+    if (!world) continue;
+
+    s_CachedController = object;
+    Log("[Discovery] World resolved through player controller %p -> %p", object, world);
+    return world;
+  }
+  return nullptr;
 }
+
+}
+
+static void *GetActiveWorld(const EngineState &state);
 
 UObject *GetLiveWorld(EngineState &state) {
   void *slot = nullptr;
@@ -49,11 +104,18 @@ UObject *GetLiveWorld(EngineState &state) {
   if (LooksLikeWorld(state, state.GWorld))
     return state.GWorld;
 
+  if (UObject *controllerWorld = FindWorldThroughController(state))
+    return controllerWorld;
+
+  void *active = GetActiveWorld(state);
+  if (LooksLikeWorld(state, active))
+    return static_cast<UObject *>(active);
+
   static bool s_LoggedUnverified = false;
   if (!s_LoggedUnverified) {
     s_LoggedUnverified = true;
-    Log("[Discovery] No world passed validation (slot=%p instance=%p); answering with the "
-        "recovered instance", slot, state.GWorld);
+    Log("[Discovery] No world passed validation (slot=%p instance=%p active=%p); answering "
+        "with the recovered instance", slot, state.GWorld, active);
   }
   return state.GWorld ? state.GWorld : static_cast<UObject *>(slot);
 }

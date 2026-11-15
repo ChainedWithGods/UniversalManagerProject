@@ -4,6 +4,7 @@
 #include "IPCQuery.h"
 #include "UEInternalAPI.h"
 #include "../core/EngineDiscovery.h"
+#include "../core/WorldDiscovery.h"
 #include "../lua/LuaManager.h"
 extern "C" {
 #include "../utils/SafeMemory.h"
@@ -982,8 +983,7 @@ std::string IOCPServer::ProcessCommand(const std::string& command) {
 
     if (cmd == "GLOBALS") {
         extern EngineState g_State;
-        void* liveWorld = nullptr;
-        if (g_State.GWorldPtr) SafeMem_Read(g_State.GWorldPtr, &liveWorld, sizeof(void*));
+        void* liveWorld = EngineDiscovery::GetLiveWorld(g_State);
         std::ostringstream oss;
         oss << "GUObjectArray=" << GetGUObjectArray() << "\n";
         oss << "FNamePool=" << GetFNamePool() << "\n";
