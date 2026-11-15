@@ -225,7 +225,7 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 | `UObject::FindObject(path)` | Resolves a full object path, a package path, or a short name. |
 | `UObject::FindClass(name)` | Resolves a class by short name, path, or Blueprint `_C` spelling. |
 | `UObject::Construct(class, outer)` | Creates an instance outered to `outer` (the current world when null). Game thread only. |
-| `UObject::GetWorld()` | The current `UWorld`, or null before one exists. |
+| `UObject::GetWorld()` | The validated live `UWorld`, or null before one exists. |
 | `UObject::FindFirstOfClass(class)` | First live instance of the class, not its class default object. |
 | `RC::Unreal::FindFirstOf(className)` | Same, resolving the class by name. |
 | `class->GetDefaultObject()` | The class default object. |

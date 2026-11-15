@@ -131,7 +131,7 @@ Returns `"UE<major>.<minor>"` from a 64-byte shared buffer (`"UE5.3"`,
 | :--- | :--- |
 | `void* GetGUObjectArray()` | `FUObjectArray` instance |
 | `void* GetFNamePool()` | name pool (`GNames`) |
-| `void* GetGWorld()` | live `UWorld*` value (`GWorld`); the pointer-to-global storage is kept internally as `GWorldPtr` |
+| `void* GetGWorld()` | live, validated `UWorld*`; falls back through the live PlayerController chain when the discovered GWorld slot holds an object that is not a world. The pointer-to-global storage is kept internally as `GWorldPtr` |
 | `void* GetGMalloc()` | `FMalloc` instance |
 | `void* GetGNatives()` | native function table |
 | `void* GetGUObjectHashTables()` | object hash tables (`GUObjectHashTables`) |

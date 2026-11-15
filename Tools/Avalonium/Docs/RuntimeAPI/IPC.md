@@ -124,7 +124,7 @@ Runs `Initialize()`.
 
 ### `GLOBALS`
 
-Returns discovered globals, with `GWorld` read live through `GWorldPtr`:
+Returns discovered globals, with `GWorld` resolved as the live world:
 
 ```text
 GUObjectArray=00007FF6E52AC668
@@ -137,8 +137,10 @@ GUObjectHashTables=00007FF6E53F0498
 ObjectCount=74045
 ```
 
-`GWorld` is the live value read through `GWorldPtr`; `GWorldPtr` is the address of
-the global itself. They are two different numbers by design.
+`GWorld` is the validated live world; `GWorldPtr` is the address of the
+discovered global itself. On a build where the slot holds an object that is not a
+world, the runtime resolves the world through the live player controller chain,
+so `GWorld` can differ from the slot value.
 
 ### `VERSION`
 
