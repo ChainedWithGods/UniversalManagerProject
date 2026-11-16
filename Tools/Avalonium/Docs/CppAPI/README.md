@@ -490,8 +490,9 @@ uint64_t id = RC::ImGui::TextureId(texture);
 if (id) ImGui::Image(static_cast<ImTextureID>(id), ImVec2(64.0f, 64.0f));
 ```
 
-- Render thread. The runtime resolves the view once per texture and caches it; the
-  returned value stays valid while the overlay lives.
+- Render thread. The runtime resolves the view from the texture's own render
+  resource and caches it per texture. Cache hits are revalidated against the live
+  resource, so a rebuilt, reloaded or replaced texture resolves to a fresh view.
 - On D3D11 the value is an `ID3D11ShaderResourceView*`. On D3D12 it is a GPU
   descriptor handle in the overlay's shader-visible SRV heap. Both are consumed by
   the runtime's ImGui context.
