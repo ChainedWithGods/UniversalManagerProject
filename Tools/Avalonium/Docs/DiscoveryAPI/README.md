@@ -67,12 +67,16 @@ Detailed per-function reference: [REFERENCE.md](REFERENCE.md).
  3. Cache path: if EnableDiscoveryCache and snapshot validates:
                          restore offsets/globals → rebuild caches → done
  4. FindGlobals: GUObjectArray, GNames, GWorld, GMalloc, GNatives,
-                       GUObjectHashTables (pattern scan or obfuscation scan)
+                       GUObjectHashTables (pattern scan or obfuscation scan);
+                       the FName cache decodes as soon as GNames validates,
+                       under the remaining searches
  4a. Identify GMalloc: GetDescriptiveName, measure the Malloc vtable slot from
-                       call-site argument shapes, prove it with one allocation
+                       call-site argument shapes (parallel section scan),
+                       prove it with one allocation
  5. DiscoverOffsets: UObject, UStruct/UClass/UFunction, FProperty/FName layout
- 6. BuildFNameCache: decode + cache name entries (multi-threaded arenas)
- 7. FindEngineFunctions: FName::ToString, GetFullName, StaticConstructObject,
+ 6. BuildFNameCache: ran inside FindGlobals (step 4); the per-chunk text index
+                       is filled by the walk workers
+ 7. FindEngineFunctions: FName::ToString, GetFullName,
                        IConsoleManager (unless skipped)
  8. FindCoreClasses: UObject/UClass/UStruct/AActor/APawn/UEnum/UFunction/
                        UPackage/UWorld class objects
@@ -82,7 +86,8 @@ Detailed per-function reference: [REFERENCE.md](REFERENCE.md).
 11. FindProcessEvent: vtable slot via engine-law resolution
 12. BuildObjectIndex: Name→object(s), class→instances, function caches
 13. RebuildFunctionCache / DeltaUpdateFunctionCache
-14. FindStaticConstructObject, FindProcessInternal, FindProcessLocalScriptFunction
+14. FindStaticConstructObject (only when a mod runtime is enabled),
+                       FindProcessInternal, FindProcessLocalScriptFunction
 15. FindGEngine
 16. (optional) save discovery snapshot
 ```
@@ -92,14 +97,39 @@ executable's PE timestamp and image size, re-verifies the allocator identity
 and Malloc slot (one allocation probe) and the `IConsoleManager` pointer
 global's sparse map, then re-runs the in-memory stages: FName cache, engine
 functions, core classes, object index, world, ProcessEvent,
-`StaticConstructObject`, `ProcessInternal`, `ProcessLocalScriptFunction` and
-`GEngine`. It may re-save the snapshot when it newly resolves
-`IConsoleManager`.
+`StaticConstructObject` (when a mod runtime is enabled), `ProcessInternal`,
+`ProcessLocalScriptFunction` and `GEngine`. It may re-save the snapshot when it
+newly resolves `IConsoleManager`.
 
-The `StaticConstructObject_Internal` RF-population scan in `FunctionFinder` is
-multi-threaded: code ranges of 8 MB or more are chunked across up to 8 workers,
-and candidate starts are scored in parallel. I split it across workers because grinding through that much code on one thread is dumb as
-hell.
+`GUObjectHashTables` is searched main module first and stops at the first
+Strict four-map chain whose sampled keys are all live UObjects; that proof
+settles the table, so the remaining modules are not scanned. The search line
+reports its wall time, the megabytes it read and the key-proof time.
+
+### StaticConstructObject_Internal
+
+The construct entry search runs in cost order: exported symbol first, then the
+parameter-struct law, then the reflected native-caller traversal, the
+`NewObject` diagnostic string and the RF-mask population scan as fallbacks.
+
+The parameter-struct law is the primary route. The entry takes
+`FStaticConstructObjectParameters` by const reference, so its body loads the
+structure members off RCX, and every build from UE 4.23 to 5.8 opens with the
+class-flag test for `CLASS_Native | CLASS_Intrinsic` (mask `0x10000080`,
+`UObjectGlobals.cpp`). Candidate starts come from the module's own direct-call
+targets, because `NewObject<T>` inlines into hundreds of engine functions and
+calls the entry directly. Padding before a function cannot be trusted for
+start detection, and the `NewObject` diagnostic string is compiled out of
+shipping builds, so neither is used as evidence. A candidate is accepted with
+at least three distinct parameter reads, the mask inside its own body, at
+least sixteen direct callers and a 4x lead over any runner-up. Measured
+winners: 775 callers on 4.26, 546 on 4.27, 1317 on 5.4, 1484 on 5.8.
+
+The search itself only runs at startup when a mod runtime is enabled
+(`EnableLuaMods` or `EnableCppMods`). Otherwise discovery defers it, and the
+console resolves the entry on demand only after its construct helper has
+failed (`EnsureStaticConstructObject`).
+
 
 Progress flags on `EngineState`: `bGlobalsFound`, `bFunctionsFound`,
 `bCoreClassesFound`, `bOffsetsDiscovered`, `bFNameLayoutDiscovered`,

@@ -87,11 +87,16 @@ Log lines use `[TravelGuard]` and land in LEVEL TRANSITION.
    * existing usable console → reuse;
    * stale/invalid pointer → log and replace.
 5. Otherwise creates one, in order:
-   * a reflected **construct helper** (`FindConstructHelper` + a spawn-params
-     frame), the engine's own factory;
    * an already existing console owned by the viewport;
    * `StaticConstructObject_Internal` via `TrySEHConstruct`, both the
-     params-frame and direct-call ABI variants.
+     params-frame and direct-call ABI variants, when the entry is resolved;
+   * a reflected **construct helper** (`FindConstructHelper` + a spawn-params
+     frame), the engine's own factory;
+   * after both fail, the construct entry is resolved on demand
+     (`EngineDiscovery::EnsureStaticConstructObject`) and direct construction
+     is retried. Discovery resolves the entry at startup only when a mod
+     runtime is enabled, so this retry is the console-only path on builds
+     where the helper cannot fulfil the viewport outer.
 6. Validates the object (class + outer == viewport) before attaching it to
    `ViewportConsole`. We're not attaching a random UObject that merely looks like a console,
    that's how the runtime ends up crashing deep inside the engine with no useful stack.

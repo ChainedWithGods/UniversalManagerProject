@@ -322,12 +322,13 @@ bool FindGEngine(EngineState& state);   // declared in FunctionFinder.h
 | `FindGUObjectArray` | AOB pattern first unless `SkipPatternScan`; when that comes back empty, I fall back to the obfuscation scan, which does the dirty work; validates the candidate against live objects |
 | `FindGNames` | name-pool candidates validated by `IsValidFNamePool` |
 | `FindGWorld` | finds the global slot (`GWorldPtr`) and the current world |
-| `FindGMalloc` | resolves the instance + module location + `GetDescriptiveName` (`GMallocName`) and measures the `Malloc` vtable slot from engine call sites |
+| `FindGMalloc` | resolves the instance + module location + `GetDescriptiveName` (`GMallocName`) and measures the `Malloc` vtable slot from engine call sites; the vote scans executable sections in parallel and the result line carries the elapsed time |
 | `IsValidMallocInstance` | canonical pointer, readable vtable, first four slots canonical code, not inside a module, has a descriptive-name getter |
 | `GetAllocatorDescriptiveName` | reads the literal returned by the allocator's name getter; reports the slot |
 | `ProbeAllocatorMalloc` | calls one measured Malloc slot for a small block and accepts it only if the returned block is canonical, mapped and writable; the probe block is deliberately leaked (one per session) |
-| `FindGNatives` / `FindGUObjectHashTables` | global table addresses |
-| `FindGlobals` | orchestrates all of the above; sets `bGlobalsFound` |
+| `FindGNatives` | native-function table address (`GNatives`) |
+| `FindGUObjectHashTables` | scans writable non-executable module sections in parallel windows, main module first; a Strict four-map chain whose sampled keys are all live UObjects ends the search, and the result line reports wall time, megabytes read and key-proof time |
+| `FindGlobals` | orchestrates all of the above; sets `bGlobalsFound`; the FName cache decodes here as soon as GNames validates, under the remaining searches |
 
 ### 4.1 Malloc-slot measurement (`AllocatorSlotScan.h`)
 
@@ -369,6 +370,7 @@ bool FindEngineFunctions(EngineState&);
 bool FindFNameToString(EngineState&);
 bool FindGetFullName(EngineState&);
 bool FindStaticConstructObject(EngineState&);
+bool EnsureStaticConstructObject(EngineState&);
 bool FindConsoleManager(EngineState&);
 bool FindCoreClasses(EngineState&);
 bool FindProcessEvent(EngineState&);
@@ -442,6 +444,8 @@ int32_t ForEachObject(const EngineState&, ObjectIteratorCallback callback, void*
 
 ```cpp
 void BuildFNameCache(EngineState&);
+int32_t FindNameIndexByText(const EngineState&, std::string_view text);
+void AddNameTextIndex(EngineState&, std::string_view text, int32_t nameIdx);
 std::string DecodeFNameEntryString(const EngineState&, uint8_t* data, size_t offset, uint16_t meta);
 std::string FNameToStr(const EngineState&, const FName&);
 std::string GetObjectNameStr(const EngineState&, UObject*);
@@ -453,6 +457,14 @@ bool DiscoverFNameLayout(EngineState&);
 * `BuildPathName`: outer chain, outermost first, joined with `.` between a
   link and its outer and `:` for subobjects of a top-level object.
 * `BuildFullName`: `ClassName Path`, the engine's own full-name form.
+* `BuildFNameCache` decodes name entries with multi-threaded arenas and fills
+  the text index in the same workers: one map per pool chunk
+  (`NameTextShards`), so publishing the index costs no serial pass over the
+  names.
+* `FindNameIndexByText` scans the shards in pool order, which returns the
+  earliest entry with that text, the same answer a single first-insert-wins
+  table gives. `AddNameTextIndex` publishes one later-created name into its
+  chunk's shard.
 * `DiscoverFNameLayout` detects width (4/8/12), case-preserving blocks,
   outline numbers, header/length bit layout (`FName_Stride`, `FName_LenShift`,
   `FName_LenMask`), and sets `bFNameLayoutDiscovered`. I make it probe,
@@ -566,6 +578,7 @@ bool FindFNameToString(EngineState&);
 bool FindGetFullName(EngineState&);
 bool FindGEngine(EngineState&);
 bool FindStaticConstructObject(EngineState&);
+bool EnsureStaticConstructObject(EngineState&);
 bool FindConsoleManagerHeuristic(EngineState&);
 bool FindConsoleManager(EngineState&);
 bool FindEngineFunctions(EngineState&, bool skipConsoleManager);
@@ -589,6 +602,21 @@ bool IsLoaderDispatchedCall();
   `skipConsoleManager` avoids the cost when the console is disabled.
 * `FindFunctionByName` resolves by full key first, then name-only, then a class
   walk; functionality used by IPC/Lua `CallFunction`.
+* `FindStaticConstructObject` resolves `StaticConstructObject_Internal` and
+  sets `bStaticConstructTakesParams`. Its routes run in cost order:
+  1. exported symbol;
+  2. parameter-struct law: one pass collects the `0x10000080` class-flag mask
+     hits and the image's direct-call targets; candidate starts are the call
+     targets inside the 8 KB before each hit; accepted with at least three
+     distinct parameter reads off RCX, the mask inside the candidate's own
+     body, at least sixteen callers and a 4x lead over the runner-up;
+  3. reflected native-caller traversal;
+  4. `NewObject` diagnostic-string xrefs;
+  5. RF-mask population scan.
+* `EnsureStaticConstructObject` runs the search on first demand and remembers
+  the outcome. Discovery calls `FindStaticConstructObject` at startup only
+  when `EnableLuaMods` or `EnableCppMods` is set; the console enabler reaches
+  the ensure path only after its construct helper fails.
 
 ---
 

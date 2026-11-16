@@ -286,7 +286,7 @@ fine" bullshit. Grouped by purpose:
 
 | Function | Semantics |
 | :--- | :--- |
-| `TrySEHConstruct(state, cls, outer, name, setFlags)` | `StaticConstructObject_Internal` through the params-frame or direct-call ABI under SEH |
+| `TrySEHConstruct(state, cls, outer, name, setFlags)` | `StaticConstructObject_Internal` through the params-frame or direct-call ABI under SEH; returns null while the entry is unresolved (`EnsureStaticConstructObject` resolves it on demand) |
 | `TrySEHConstruct(fn, params)` | raw constructor call under SEH |
 | `StartsWith`, `EqualsInsensitiveAscii`, `ContainsInsensitiveAscii` | string helpers |
 | `IsDefaultObjectName`, `IsClassObject`, `IsObjectA` | shape tests (`Default__` prefix, class object, derives-from) |
