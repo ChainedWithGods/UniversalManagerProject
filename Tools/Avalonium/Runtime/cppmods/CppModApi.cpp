@@ -1105,7 +1105,16 @@ namespace Avalonium::CppMods
             }
         }
 
-        ID3D12Resource* ProbeD3D12Resource(uintptr_t rhi, int32_t wantX, int32_t wantY)
+        struct D3D12ResourceHit
+        {
+            ID3D12Resource* Resource = nullptr;
+            uintptr_t Wrapper = 0;
+            int32_t WrapperOffset = -1;
+            int32_t NativeOffset = -1;
+        };
+
+        ID3D12Resource* ProbeD3D12Resource(uintptr_t rhi, int32_t wantX, int32_t wantY,
+                                           D3D12ResourceHit* outHit = nullptr)
         {
             uintptr_t d3d12Base = 0;
             uintptr_t d3d12End = 0;
@@ -1119,6 +1128,9 @@ namespace Avalonium::CppMods
                 return nullptr;
 
             ID3D12Resource* fallback = nullptr;
+            uintptr_t fallbackWrapper = 0;
+            int32_t fallbackWrapperOffset = -1;
+            int32_t fallbackNativeOffset = -1;
             for (int outerOffset = 0; outerOffset <= 0x2F8; outerOffset += 8)
             {
                 const uintptr_t level1 = ReadPointer(outer + outerOffset);
@@ -1153,11 +1165,42 @@ namespace Avalonium::CppMods
                     if (D3D12ResourceMatchesSize(resource, wantX, wantY))
                     {
                         if (fallback) fallback->Release();
+                        if (outHit)
+                        {
+                            outHit->Resource = resource;
+                            outHit->Wrapper = level1;
+                            outHit->WrapperOffset = outerOffset;
+                            outHit->NativeOffset = innerOffset;
+                        }
                         return resource;
                     }
-                    if (!fallback) fallback = resource;
-                    else resource->Release();
+
+                    if (wantX <= 0 || wantY <= 0)
+                    {
+                        if (!fallback)
+                        {
+                            fallback = resource;
+                            fallbackWrapper = level1;
+                            fallbackWrapperOffset = outerOffset;
+                            fallbackNativeOffset = innerOffset;
+                        }
+                        else
+                        {
+                            resource->Release();
+                        }
+                    }
+                    else
+                    {
+                        resource->Release();
+                    }
                 }
+            }
+            if (fallback && outHit)
+            {
+                outHit->Resource = fallback;
+                outHit->Wrapper = fallbackWrapper;
+                outHit->WrapperOffset = fallbackWrapperOffset;
+                outHit->NativeOffset = fallbackNativeOffset;
             }
             return fallback;
         }
@@ -1191,6 +1234,11 @@ namespace Avalonium::CppMods
                     if (fallback) fallback->Release();
                     return view;
                 }
+                if (wantX > 0 && wantY > 0)
+                {
+                    view->Release();
+                    continue;
+                }
                 if (!fallback) fallback = view;
                 else view->Release();
             }
@@ -1213,7 +1261,7 @@ namespace Avalonium::CppMods
         }
 
         bool FindTextureChainD3D12(void* texture, const TextureClassLayout& layout, int32_t wantX,
-                                   int32_t wantY, TextureChainHit& hit, ID3D12Resource** out)
+                                   int32_t wantY, TextureChainHit& hit, D3D12ResourceHit& native)
         {
             uintptr_t gameBase = 0;
             uintptr_t gameEnd = 0;
@@ -1250,14 +1298,14 @@ namespace Avalonium::CppMods
                         continue;
                     }
 
-                    ID3D12Resource* native = ProbeD3D12Resource(rhi, wantX, wantY);
-                    if (!native) continue;
+                    D3D12ResourceHit candidate{};
+                    if (!ProbeD3D12Resource(rhi, wantX, wantY, &candidate)) continue;
 
                     hit.Resource = reinterpret_cast<void*>(resource);
                     hit.Rhi = reinterpret_cast<void*>(rhi);
                     hit.ResourceOffset = resourceOffset;
                     hit.RhiOffset = rhiOffset;
-                    *out = native;
+                    native = candidate;
                     return true;
                 }
             }
@@ -1323,6 +1371,9 @@ namespace Avalonium::CppMods
             void* RhiTexture = nullptr;
             int32_t ResourceOffset = -1;
             int32_t RhiOffset = -1;
+            uintptr_t NativeWrapper = 0;
+            int32_t WrapperOffset = -1;
+            int32_t NativeOffset = -1;
             uint32_t Epoch = 0;
             uint64_t View = 0;
             IUnknown* Hold = nullptr;
@@ -1342,11 +1393,33 @@ namespace Avalonium::CppMods
             void* rhi = nullptr;
             if (entry.RhiOffset < 0 ||
                 !SafeMem_Read(reinterpret_cast<uint8_t*>(entry.ResourceObject) + entry.RhiOffset,
-                              &rhi, sizeof(rhi)))
+                              &rhi, sizeof(rhi)) ||
+                rhi != entry.RhiTexture)
             {
                 return false;
             }
-            return rhi == entry.RhiTexture;
+
+            if (entry.WrapperOffset >= 0 && entry.NativeOffset >= 0)
+            {
+                uintptr_t wrapper = 0;
+                if (!SafeMem_Read(reinterpret_cast<uint8_t*>(entry.RhiTexture) +
+                                      entry.WrapperOffset,
+                                  &wrapper, sizeof(wrapper)))
+                {
+                    return false;
+                }
+                if (wrapper != entry.NativeWrapper) return false;
+
+                uintptr_t native = 0;
+                if (!SafeMem_Read(reinterpret_cast<uint8_t*>(entry.NativeWrapper) +
+                                      entry.NativeOffset,
+                                  &native, sizeof(native)))
+                {
+                    return false;
+                }
+                if (reinterpret_cast<IUnknown*>(native) != entry.Hold) return false;
+            }
+            return true;
         }
 
         void ReleaseCachedTextureView(CachedTextureView& entry, bool freeViewSlot)
@@ -1390,17 +1463,17 @@ namespace Avalonium::CppMods
             const bool srgb = TextureIsSrgb(texture, layout);
 
             TextureChainHit hit;
-            ID3D12Resource* resource = nullptr;
-            if (!FindTextureChainD3D12(texture, layout, wantX, wantY, hit, &resource))
+            D3D12ResourceHit native{};
+            if (!FindTextureChainD3D12(texture, layout, wantX, wantY, hit, native))
             {
                 NoteTextureFailure(texture);
                 return 0;
             }
 
-            const uint64_t view = D3D12Hook_CreateTextureView(resource, srgb);
+            const uint64_t view = D3D12Hook_CreateTextureView(native.Resource, srgb);
             if (!view)
             {
-                resource->Release();
+                native.Resource->Release();
                 NoteTextureFailure(texture);
                 return 0;
             }
@@ -1412,9 +1485,12 @@ namespace Avalonium::CppMods
             entry.RhiTexture = hit.Rhi;
             entry.ResourceOffset = hit.ResourceOffset;
             entry.RhiOffset = hit.RhiOffset;
+            entry.NativeWrapper = native.Wrapper;
+            entry.WrapperOffset = native.WrapperOffset;
+            entry.NativeOffset = native.NativeOffset;
             entry.Epoch = epoch;
             entry.View = view;
-            entry.Hold = resource;
+            entry.Hold = native.Resource;
 
             std::lock_guard<std::mutex> lock(cacheMutex);
             cache[texture] = entry;
