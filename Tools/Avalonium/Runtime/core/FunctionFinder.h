@@ -35,6 +35,8 @@ bool FindGEngine(EngineState &state);
 
 bool FindStaticConstructObject(EngineState &state);
 
+bool EnsureStaticConstructObject(EngineState &state);
+
 bool FindConsoleManagerHeuristic(EngineState &state);
 
 bool FindConsoleManager(EngineState &state);

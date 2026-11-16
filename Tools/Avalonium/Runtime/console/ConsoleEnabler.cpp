@@ -187,6 +187,14 @@ void AttachCheatManager(const EngineState &state) {
     }
   }
 
+  if (!createdCheatManager && !state.StaticConstructObject &&
+      EngineDiscovery::EnsureStaticConstructObject(const_cast<EngineState &>(state))) {
+    createdCheatManager = TrySEHConstruct(state, cheatManagerClass, playerController);
+    if (createdCheatManager) {
+      EngineDiscovery::WriteLogLine("[ConsoleEnabler] CheatManager created through the engine construct function after the helper path failed.");
+    }
+  }
+
   if (!createdCheatManager) {
     EngineDiscovery::WriteLogLine("[ConsoleEnabler] Failed to create CheatManager.");
     return;
@@ -751,6 +759,14 @@ bool EnableInGameConsole(const EngineState &state) {
         } else {
           EngineDiscovery::WriteLogLine("[ConsoleEnabler] Failed to find helper class default object.");
         }
+      }
+    }
+
+    if (!createdConsole && !state.StaticConstructObject &&
+        EngineDiscovery::EnsureStaticConstructObject(const_cast<EngineState &>(state))) {
+      createdConsole = TrySEHConstruct(state, consoleClass, gameViewport);
+      if (createdConsole) {
+        EngineDiscovery::WriteLogLine("[ConsoleEnabler] Console created through the engine construct function after the helper path failed.");
       }
     }
   }

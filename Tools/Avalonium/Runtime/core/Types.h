@@ -348,7 +348,7 @@ struct EngineState {
     std::vector<const char*>      FNameCacheArray;
     std::unordered_map<std::string, int32_t> StringToFNameIndex;
 
-    std::unordered_map<std::string_view, int32_t, FoldedNameHash, FoldedNameEquals> NameTextToIndex;
+    std::vector<std::unordered_map<std::string_view, int32_t, FoldedNameHash, FoldedNameEquals>> NameTextShards;
     std::deque<std::string> FNameExtraNames;
 
     int32_t FNamePoolHighestChunk = -1;

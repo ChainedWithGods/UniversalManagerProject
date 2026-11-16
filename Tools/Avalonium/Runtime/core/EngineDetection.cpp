@@ -9,6 +9,7 @@
 #include "ObjectUtils.h"
 #include "../utils/SafeMemory.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdarg>
@@ -394,11 +395,16 @@ struct WritableSection {
   uintptr_t end;
 };
 
-static inline uint32_t RexPrefixPositions(const uint8_t *p) {
-  const __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(p));
-  const __m128i rex48 = _mm_cmpeq_epi8(block, _mm_set1_epi8(0x48));
-  const __m128i rex4C = _mm_cmpeq_epi8(block, _mm_set1_epi8(0x4C));
-  return static_cast<uint32_t>(_mm_movemask_epi8(_mm_or_si128(rex48, rex4C)));
+static inline uint32_t RipLoadPositions(const uint8_t *p) {
+  const __m128i b0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(p));
+  const __m128i b1 =
+      _mm_loadu_si128(reinterpret_cast<const __m128i *>(p + 1));
+  const __m128i rex = _mm_or_si128(_mm_cmpeq_epi8(b0, _mm_set1_epi8(0x48)),
+                                   _mm_cmpeq_epi8(b0, _mm_set1_epi8(0x4C)));
+  const __m128i op =
+      _mm_or_si128(_mm_cmpeq_epi8(b1, _mm_set1_epi8(static_cast<char>(0x8B))),
+                   _mm_cmpeq_epi8(b1, _mm_set1_epi8(static_cast<char>(0x8D))));
+  return static_cast<uint32_t>(_mm_movemask_epi8(_mm_and_si128(rex, op)));
 }
 
 static void ScanExecutableSectionSafe(uintptr_t start, uintptr_t end,
@@ -409,46 +415,38 @@ static void ScanExecutableSectionSafe(uintptr_t start, uintptr_t end,
     uintptr_t scan = start;
 
     while (scan + 7 + 16 < end) {
-      const uint32_t hits =
-          RexPrefixPositions(reinterpret_cast<const uint8_t *>(scan));
-      if (hits == 0) {
-        scan += 16;
-        continue;
-      }
-      unsigned long bit = 0;
-      _BitScanForward(&bit, hits);
-      scan += static_cast<uintptr_t>(bit);
+      uint32_t hits =
+          RipLoadPositions(reinterpret_cast<const uint8_t *>(scan));
+      while (hits != 0) {
+        unsigned long bit = 0;
+        _BitScanForward(&bit, hits);
+        hits &= hits - 1;
+        const uintptr_t pos = scan + static_cast<uintptr_t>(bit);
+        if (pos + 7 >= end)
+          break;
 
-      if (scan + 7 >= end)
-        break;
+        uint8_t b0 = *reinterpret_cast<const uint8_t *>(pos);
+        if (b0 != 0x48 && b0 != 0x4C)
+          continue;
+        uint8_t b1 = *reinterpret_cast<const uint8_t *>(pos + 1);
+        if (b1 != 0x8B && b1 != 0x8D)
+          continue;
+        uint8_t b2 = *reinterpret_cast<const uint8_t *>(pos + 2);
+        if ((b2 & 0x07) != 0x05)
+          continue;
 
-      uint8_t b0 = *reinterpret_cast<const uint8_t *>(scan);
-      if (b0 != 0x48 && b0 != 0x4C) {
-        ++scan;
-        continue;
-      }
-      uint8_t b1 = *reinterpret_cast<const uint8_t *>(scan + 1);
-      if (b1 != 0x8B && b1 != 0x8D) {
-        ++scan;
-        continue;
-      }
-      uint8_t b2 = *reinterpret_cast<const uint8_t *>(scan + 2);
-      if ((b2 & 0x07) != 0x05) {
-        ++scan;
-        continue;
-      }
-
-      int32_t rel32 = *reinterpret_cast<const int32_t *>(scan + 3);
-      uintptr_t target = scan + 7 + rel32;
-      if (target) {
-        for (int k = 0; k < sectionCount; ++k) {
-          if (target >= sections[k].start && target < sections[k].end) {
-            out.push_back(target);
-            break;
+        int32_t rel32 = *reinterpret_cast<const int32_t *>(pos + 3);
+        uintptr_t target = pos + 7 + rel32;
+        if (target) {
+          for (int k = 0; k < sectionCount; ++k) {
+            if (target >= sections[k].start && target < sections[k].end) {
+              out.push_back(target);
+              break;
+            }
           }
         }
       }
-      ++scan;
+      scan += 16;
     }
     for (; scan + 7 < end; ++scan) {
       uint8_t b0 = *reinterpret_cast<const uint8_t *>(scan);
@@ -786,6 +784,7 @@ bool FindGUObjectArray(EngineState &state) {
           }
         }
 
+        const uint64_t sweepStart = GetTickCount64();
         const unsigned int numCores =
             PatternScan::AcquireWorkerBudget(PatternScan::RecommendedWorkerCount(16));
         struct CodeChunkJob {
@@ -840,8 +839,9 @@ bool FindGUObjectArray(EngineState &state) {
         bag.erase(std::unique(bag.begin(), bag.end()), bag.end());
 
         Log("[Discovery] Obfuscation scan found %zu candidate static pointers "
-            "(%zu unique targets), screening headers...",
-            rawCandidateCount, bag.size());
+            "(%zu unique targets) in %llu ms, screening headers...",
+            rawCandidateCount, bag.size(),
+            static_cast<unsigned long long>(GetTickCount64() - sweepStart));
 
         std::vector<void *> objectArrayCandidates;
         std::mutex candMutex;
@@ -1548,7 +1548,7 @@ static void CollectRipRelativeTargets(const PatternScan::ModuleInfo &module,
       const uint8_t *scan = pStart;
 
       while (scan + 7 + 16 <= pEnd) {
-        const uint32_t hits = RexPrefixPositions(scan);
+        const uint32_t hits = RipLoadPositions(scan);
         if (hits == 0) {
           scan += 16;
           continue;
@@ -1667,67 +1667,115 @@ static int MeasureAllocatorMallocSlot(const PatternScan::ModuleInfo &module,
   uint16_t calls[kMaxSlot] = {};
   uint16_t aligned[kMaxSlot] = {};
   constexpr size_t kChunkSize = 256 * 1024;
-  std::vector<uint8_t> code(kChunkSize);
   const uint64_t scanStart = GetTickCount64();
-  uint64_t scannedBytes = 0;
 
-  auto sectionList = IMAGE_FIRST_SECTION(nt);
+  struct SlotScanJob {
+    uintptr_t start;
+    uintptr_t end;
+    uintptr_t sectionEnd;
+  };
+  std::vector<SlotScanJob> jobs;
+  const unsigned int numCores =
+      PatternScan::AcquireWorkerBudget(PatternScan::RecommendedWorkerCount(16));
+  const auto *sectionList = IMAGE_FIRST_SECTION(nt);
   for (int i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
     const auto &sec = sectionList[i];
     if (!(sec.Characteristics & IMAGE_SCN_MEM_EXECUTE) || sec.Misc.VirtualSize == 0)
       continue;
     const uintptr_t start = module.base + sec.VirtualAddress;
     const uintptr_t end = start + sec.Misc.VirtualSize;
-
-    for (uintptr_t cursor = start; cursor + 7 <= end;) {
-      const size_t toRead = static_cast<size_t>(
-          (std::min)(end - cursor, static_cast<uintptr_t>(kChunkSize)));
-      const size_t got = SafeMem_ReadSpan(reinterpret_cast<const void *>(cursor),
-                                          code.data(), toRead);
-      if (got < 7) {
-
-        const uintptr_t nextPage = (cursor + 0x1000) & ~static_cast<uintptr_t>(0xFFF);
-        cursor = nextPage > cursor ? nextPage : cursor + 0x1000;
-        continue;
-      }
-      scannedBytes += got;
-
-      for (size_t j = 0; j + 7 <= got; ++j) {
-        const uint8_t rex = code[j];
-        if (rex != 0x48 && rex != 0x4C)
-          continue;
-        if (code[j + 1] != 0x8B || (code[j + 2] & 0xC7) != 0x05)
-          continue;
-        int32_t disp = 0;
-        memcpy(&disp, code.data() + j + 3, sizeof(disp));
-        if (cursor + j + 7 + static_cast<int64_t>(disp) != target)
-          continue;
-
-        const int reg = ((code[j + 2] >> 3) & 0x07) | (rex == 0x4C ? 0x08 : 0x00);
-        AllocatorCallSiteVote vote;
-        if (AnalyzeAllocatorCallSite(cursor + j, end, reg, vote) &&
-            vote.slot >= 0 && vote.slot < static_cast<int>(kMaxSlot)) {
-          if (calls[vote.slot] < 0xFFFF)
-            ++calls[vote.slot];
-          if (vote.constantAlignment && aligned[vote.slot] < 0xFFFF)
-            ++aligned[vote.slot];
-        }
-      }
-
-      if (got < toRead) {
-        const uintptr_t nextPage = (cursor + got + 0x1000) & ~static_cast<uintptr_t>(0xFFF);
-        cursor = nextPage > cursor ? nextPage : cursor + got;
-        continue;
-      }
-      if (toRead < kChunkSize)
+    const size_t sectionLen = static_cast<size_t>(end - start);
+    const size_t chunkLen = (sectionLen + numCores - 1) / numCores;
+    for (size_t c = 0; c < numCores; ++c) {
+      const uintptr_t jobStart = start + c * chunkLen;
+      if (jobStart >= end)
         break;
-      cursor += toRead - 7;
+      jobs.push_back({jobStart, (std::min)(end, jobStart + chunkLen), end});
+    }
+  }
+
+  std::vector<std::array<uint16_t, kMaxSlot>> callsByJob(jobs.size());
+  std::vector<std::array<uint16_t, kMaxSlot>> alignedByJob(jobs.size());
+  std::atomic<uint64_t> scannedBytes{0};
+  std::vector<std::thread> workers;
+  workers.reserve(jobs.size());
+
+  for (size_t ji = 0; ji < jobs.size(); ++ji) {
+    workers.emplace_back([&, ji]() {
+      const SlotScanJob &job = jobs[ji];
+      std::vector<uint8_t> code(kChunkSize);
+      uint64_t scanned = 0;
+      for (uintptr_t cursor = job.start; cursor + 7 <= job.end;) {
+        const size_t toRead = static_cast<size_t>(
+            (std::min)(job.sectionEnd - cursor, static_cast<uintptr_t>(kChunkSize)));
+        const size_t got = SafeMem_ReadSpan(reinterpret_cast<const void *>(cursor),
+                                            code.data(), toRead);
+        if (got < 7) {
+
+          const uintptr_t nextPage = (cursor + 0x1000) & ~static_cast<uintptr_t>(0xFFF);
+          cursor = nextPage > cursor ? nextPage : cursor + 0x1000;
+          continue;
+        }
+        scanned += got;
+
+        for (size_t j = 0; j + 7 <= got; ++j) {
+          if (cursor + j >= job.end)
+            break;
+          const uint8_t rex = code[j];
+          if (rex != 0x48 && rex != 0x4C)
+            continue;
+          if (code[j + 1] != 0x8B || (code[j + 2] & 0xC7) != 0x05)
+            continue;
+          int32_t disp = 0;
+          memcpy(&disp, code.data() + j + 3, sizeof(disp));
+          if (cursor + j + 7 + static_cast<int64_t>(disp) != target)
+            continue;
+
+          const int reg = ((code[j + 2] >> 3) & 0x07) | (rex == 0x4C ? 0x08 : 0x00);
+          AllocatorCallSiteVote vote;
+          if (AnalyzeAllocatorCallSite(cursor + j, job.sectionEnd, reg, vote) &&
+              vote.slot >= 0 && vote.slot < static_cast<int>(kMaxSlot)) {
+            uint16_t &callCount = callsByJob[ji][vote.slot];
+            if (callCount < 0xFFFF)
+              ++callCount;
+            uint16_t &alignedCount = alignedByJob[ji][vote.slot];
+            if (vote.constantAlignment && alignedCount < 0xFFFF)
+              ++alignedCount;
+          }
+        }
+
+        if (got < toRead) {
+          const uintptr_t nextPage =
+              (cursor + got + 0x1000) & ~static_cast<uintptr_t>(0xFFF);
+          cursor = nextPage > cursor ? nextPage : cursor + got;
+          continue;
+        }
+        if (toRead < kChunkSize)
+          break;
+        cursor += toRead - 7;
+      }
+      scannedBytes.fetch_add(scanned, std::memory_order_relaxed);
+    });
+  }
+  for (auto &worker : workers)
+    worker.join();
+
+  PatternScan::ReleaseWorkerBudget(numCores);
+  if (!jobs.empty()) {
+    for (size_t ji = 0; ji < jobs.size(); ++ji) {
+      for (int slot = 0; slot < static_cast<int>(kMaxSlot); ++slot) {
+        const uint32_t total = static_cast<uint32_t>(calls[slot]) + callsByJob[ji][slot];
+        calls[slot] = static_cast<uint16_t>((std::min)(total, 0xFFFFu));
+        const uint32_t alignedTotal =
+            static_cast<uint32_t>(aligned[slot]) + alignedByJob[ji][slot];
+        aligned[slot] = static_cast<uint16_t>((std::min)(alignedTotal, 0xFFFFu));
+      }
     }
   }
 
   if (IsVerboseLoggingEnabled()) {
     Log("[Discovery] GMalloc: slot scan covered %llu bytes in %llu ms",
-        static_cast<unsigned long long>(scannedBytes),
+        static_cast<unsigned long long>(scannedBytes.load()),
         static_cast<unsigned long long>(GetTickCount64() - scanStart));
   }
 
@@ -1889,6 +1937,7 @@ static void VerifyAllocatorMallocSlot(EngineState &state) {
 }
 
 bool FindGMalloc(EngineState &state) {
+  const uint64_t findStart = GetTickCount64();
 
   {
     const char *exportNames[] = {
@@ -2020,8 +2069,9 @@ bool FindGMalloc(EngineState &state) {
         }
         VerifyAllocatorMallocSlot(state);
 
-        Log("[Discovery] GMalloc: resolved global at %p (references %d in %s, instance %p)",
-            reinterpret_cast<void *>(target), weight, mod.name.c_str(), instance);
+        Log("[Discovery] GMalloc: resolved global at %p (references %d in %s, instance %p, %llu ms)",
+            reinterpret_cast<void *>(target), weight, mod.name.c_str(), instance,
+            static_cast<unsigned long long>(GetTickCount64() - findStart));
         Log("[Discovery] GMalloc: allocator self-identifies as \"%s\" (vtable slot %d)",
             allocName, nameSlot);
         return true;
@@ -2339,19 +2389,53 @@ ChainResult DescribeHashTablesChain(const uint8_t *buffer, size_t size,
 
 bool FindGUObjectHashTables(EngineState &state) {
   FastMemScope fastMem;
-  const auto modules = PatternScan::GetLoadedModules();
+  const uint64_t searchStart = GetTickCount64();
+  auto modules = PatternScan::GetLoadedModules();
+
+  const HMODULE mainHandle = PatternScan::GetMainModule().handle;
+  std::stable_sort(modules.begin(), modules.end(),
+                   [mainHandle](const auto &a, const auto &b) {
+                     const bool aMain = a.handle == mainHandle;
+                     const bool bMain = b.handle == mainHandle;
+                     if (aMain != bMain)
+                       return aMain;
+                     return a.size > b.size;
+                   });
   constexpr size_t kMaxSectionBytes = 64 * 1024 * 1024;
   constexpr size_t kMaxContentChecks = 256;
   static const size_t kMapStrides[] = {0x50};
   struct SectionHit {
     HashTablesCandidate candidate;
-    size_t map0Offset = 0;
+    uintptr_t map0Address = 0;
   };
 
   HashTablesCandidate best;
   HashTablesCandidate bestRejected;
   size_t verifiedChains = 0;
   size_t rejectedChains = 0;
+  std::atomic<uint64_t> scannedSectionBytes{0};
+  uint64_t proofMs = 0;
+
+  const unsigned int numCores = PatternScan::RecommendedWorkerCount(4);
+
+  struct SectionScan {
+    uintptr_t base;
+    size_t size;
+    size_t firstWindow;
+    size_t windowCount;
+  };
+  struct ScanWindow {
+    uintptr_t sectionBase;
+    size_t sectionSize;
+    size_t start;
+    size_t end;
+  };
+  constexpr size_t kWindowBytes = 4 * 1024 * 1024;
+  constexpr size_t kWindowLead = 0x100;
+  constexpr size_t kWindowTail = 0x140;
+  std::vector<SectionScan> sectionScans;
+  std::vector<ScanWindow> windows;
+  size_t mainSectionCount = 0;
 
   for (const auto &mod : modules) {
     if (!mod.base || mod.size < 0x1000)
@@ -2394,66 +2478,163 @@ bool FindGUObjectHashTables(EngineState &state) {
       if (sectionSize < 0x200)
         continue;
 
-      std::vector<uint8_t> buffer(sectionSize);
-      if (SafeMem_ReadSpanExact(reinterpret_cast<const void *>(sectionBase),
-                                buffer.data(), sectionSize) != sectionSize)
-        continue;
-
-      std::vector<SectionHit> hits;
-      for (size_t map0 = 0x28; map0 + 0x50 <= sectionSize; map0 += 8) {
-
-        int32_t headNum = 0, headMax = 0;
-        memcpy(&headNum, buffer.data() + map0 + 0x08, sizeof(headNum));
-        if (headNum <= 0 || headNum > 20 * 1000 * 1000)
-          continue;
-        memcpy(&headMax, buffer.data() + map0 + 0x0C, sizeof(headMax));
-        if (headMax < headNum || headMax > 40 * 1000 * 1000)
-          continue;
-
-        for (size_t stride : kMapStrides) {
-          HashTablesCandidate hit;
-          size_t baseOffset = 0;
-          const ChainResult result = DescribeHashTablesChain(
-              buffer.data(), sectionSize, map0, stride, hit, baseOffset);
-          if (result == ChainResult::None)
-            continue;
-          hit.tier = result == ChainResult::Strict ? 2 : 1;
-          hit.address = sectionBase + baseOffset;
-          hits.push_back({hit, map0});
-        }
+      SectionScan scan;
+      scan.base = sectionBase;
+      scan.size = sectionSize;
+      scan.firstWindow = windows.size();
+      const size_t windowCount =
+          (sectionSize + kWindowBytes - 1) / kWindowBytes;
+      for (size_t w = 0; w < windowCount; ++w) {
+        ScanWindow win;
+        win.sectionBase = sectionBase;
+        win.sectionSize = sectionSize;
+        win.start = w * kWindowBytes;
+        win.end = (std::min)(sectionSize, win.start + kWindowBytes);
+        windows.push_back(win);
       }
-
-      std::stable_sort(hits.begin(), hits.end(),
-                       [](const SectionHit &a, const SectionHit &b) {
-                         if (a.candidate.tier != b.candidate.tier)
-                           return a.candidate.tier > b.candidate.tier;
-                         return a.candidate.score > b.candidate.score;
-                       });
-      size_t checks = 0;
-      for (const SectionHit &hit : hits) {
-        if (checks >= kMaxContentChecks)
-          break;
-        ++checks;
-        int32_t valid = 0, sampled = 0;
-        const bool keysAreObjects = SampleObjectOuterKeys(
-            buffer.data() + hit.map0Offset + 2 * hit.candidate.stride,
-            modules, valid, sampled);
-        HashTablesCandidate scored = hit.candidate;
-        scored.keysValid = valid;
-        scored.keysSampled = sampled;
-        if (!keysAreObjects) {
-          ++rejectedChains;
-          if (scored.score > bestRejected.score)
-            bestRejected = scored;
-          continue;
-        }
-        ++verifiedChains;
-        if (scored.tier > best.tier ||
-            (scored.tier == best.tier && scored.score > best.score))
-          best = scored;
-        break;
-      }
+      scan.windowCount = windowCount;
+      sectionScans.push_back(scan);
     }
+    if (mod.handle == mainHandle)
+      mainSectionCount = sectionScans.size();
+  }
+
+  std::vector<std::vector<SectionHit>> windowHits(windows.size());
+  auto runScanRange = [&](size_t firstSection, size_t lastSection) {
+    if (firstSection >= lastSection)
+      return;
+    const size_t firstWindow = sectionScans[firstSection].firstWindow;
+    const SectionScan &lastScan = sectionScans[lastSection - 1];
+    const size_t lastWindow = lastScan.firstWindow + lastScan.windowCount;
+    const unsigned int workers = (std::max)(
+        1u, (std::min)(numCores,
+                       static_cast<unsigned int>(lastWindow - firstWindow)));
+    std::atomic<size_t> nextWindow{firstWindow};
+    std::vector<std::thread> scanThreads;
+    scanThreads.reserve(workers);
+    for (unsigned int w = 0; w < workers; ++w) {
+      scanThreads.emplace_back([&]() {
+        std::vector<uint8_t> buffer(kWindowBytes + kWindowLead + kWindowTail);
+        for (;;) {
+          const size_t wi = nextWindow.fetch_add(1, std::memory_order_relaxed);
+          if (wi >= lastWindow)
+            break;
+          const ScanWindow &win = windows[wi];
+          const size_t coreStart = win.start;
+          const size_t coreEnd = win.end;
+          const size_t sectionSize = win.sectionSize;
+          const uintptr_t sectionBase = win.sectionBase;
+          const size_t bufStart =
+              coreStart > kWindowLead ? coreStart - kWindowLead : 0;
+          const size_t bufEnd = (std::min)(sectionSize, coreEnd + kWindowTail);
+          const size_t bufSize = bufEnd - bufStart;
+          if (bufSize < 0x50)
+            continue;
+          if (SafeMem_ReadSpanExact(
+                  reinterpret_cast<const void *>(sectionBase + bufStart),
+                  buffer.data(), bufSize) != bufSize)
+            continue;
+
+          auto &out = windowHits[wi];
+          scannedSectionBytes.fetch_add(bufSize, std::memory_order_relaxed);
+          const size_t firstMap0 = coreStart == 0 ? 0x28 : coreStart - bufStart;
+          for (size_t map0 = firstMap0; map0 < coreEnd - bufStart; map0 += 8) {
+
+            if (map0 + 0x50 > bufSize)
+              break;
+            int32_t headNum = 0, headMax = 0;
+            memcpy(&headNum, buffer.data() + map0 + 0x08, sizeof(headNum));
+            if (headNum <= 0 || headNum > 20 * 1000 * 1000)
+              continue;
+            memcpy(&headMax, buffer.data() + map0 + 0x0C, sizeof(headMax));
+            if (headMax < headNum || headMax > 40 * 1000 * 1000)
+              continue;
+            int32_t numBits = 0;
+            memcpy(&numBits, buffer.data() + map0 + 0x28, sizeof(numBits));
+            if (numBits != headNum)
+              continue;
+            int32_t hashSize = 0;
+            memcpy(&hashSize, buffer.data() + map0 + 0x48, sizeof(hashSize));
+            if (hashSize <= 0 || hashSize > 16 * 1000 * 1000 ||
+                (hashSize & (hashSize - 1)) != 0)
+              continue;
+
+            for (size_t stride : kMapStrides) {
+              HashTablesCandidate hit;
+              size_t baseOffset = 0;
+              const ChainResult result = DescribeHashTablesChain(
+                  buffer.data(), bufSize, map0, stride, hit, baseOffset);
+              if (result == ChainResult::None)
+                continue;
+              hit.tier = result == ChainResult::Strict ? 2 : 1;
+              hit.address = sectionBase + bufStart + baseOffset;
+              out.push_back({hit, sectionBase + bufStart + map0});
+            }
+          }
+        }
+      });
+    }
+    for (auto &t : scanThreads)
+      t.join();
+  };
+
+  bool conclusive = false;
+  auto proofSections = [&](size_t firstSection, size_t lastSection) {
+  for (size_t si = firstSection; si < lastSection && !conclusive; ++si) {
+    const SectionScan &scan = sectionScans[si];
+    std::vector<SectionHit> hits;
+    for (size_t w = scan.firstWindow; w < scan.firstWindow + scan.windowCount;
+         ++w)
+      hits.insert(hits.end(), windowHits[w].begin(), windowHits[w].end());
+
+    std::stable_sort(hits.begin(), hits.end(),
+                     [](const SectionHit &a, const SectionHit &b) {
+                       if (a.candidate.tier != b.candidate.tier)
+                         return a.candidate.tier > b.candidate.tier;
+                       return a.candidate.score > b.candidate.score;
+                     });
+    const uint64_t proofStart = GetTickCount64();
+    size_t checks = 0;
+    for (const SectionHit &hit : hits) {
+      if (checks >= kMaxContentChecks)
+        break;
+      ++checks;
+      uint8_t mapHeader[0x50] = {};
+      if (!SafeMem_Read(reinterpret_cast<void *>(
+                            hit.map0Address + 2 * hit.candidate.stride),
+                        mapHeader, sizeof(mapHeader)))
+        continue;
+      int32_t valid = 0, sampled = 0;
+      const bool keysAreObjects =
+          SampleObjectOuterKeys(mapHeader, modules, valid, sampled);
+      HashTablesCandidate scored = hit.candidate;
+      scored.keysValid = valid;
+      scored.keysSampled = sampled;
+      if (!keysAreObjects) {
+        ++rejectedChains;
+        if (scored.score > bestRejected.score)
+          bestRejected = scored;
+        continue;
+      }
+      ++verifiedChains;
+      if (scored.tier > best.tier ||
+          (scored.tier == best.tier && scored.score > best.score))
+        best = scored;
+
+      if (scored.tier == 2 && scored.keysValid == scored.keysSampled)
+        conclusive = true;
+      break;
+    }
+    proofMs += GetTickCount64() - proofStart;
+  }
+  };
+
+  const size_t mainSections = (std::min)(mainSectionCount, sectionScans.size());
+  runScanRange(0, mainSections);
+  proofSections(0, mainSections);
+  if (!conclusive && mainSections < sectionScans.size()) {
+    runScanRange(mainSections, sectionScans.size());
+    proofSections(mainSections, sectionScans.size());
   }
 
   if (!best.address) {
@@ -2466,22 +2647,28 @@ bool FindGUObjectHashTables(EngineState &state) {
           bestRejected.keysValid, bestRejected.keysSampled);
     }
     Log("[Discovery] GUObjectHashTables not found (chains=%zu, rejected=%zu "
-        "in writable module data)",
-        verifiedChains, rejectedChains);
+        "in writable module data, %llu ms, %llu MB scanned, %llu ms proof)",
+        verifiedChains, rejectedChains,
+        static_cast<unsigned long long>(GetTickCount64() - searchStart),
+        static_cast<unsigned long long>(scannedSectionBytes.load() >> 20),
+        static_cast<unsigned long long>(proofMs));
     return false;
   }
 
   state.GUObjectHashTables = reinterpret_cast<void *>(best.address);
   Log("[Discovery] Found GUObjectHashTables by structure: %p "
       "(stride=0x%llX, %s, lock=0x%llX%s, maps=%d/%d/%d/%d, "
-      "uobject-keys=%d/%d, score=%d)",
+      "uobject-keys=%d/%d, score=%d, %llu ms, %llu MB scanned, %llu ms proof)",
       state.GUObjectHashTables,
       static_cast<unsigned long long>(best.stride),
       best.tier == 2 ? "four-map chain" : "hash+outer chain",
       static_cast<unsigned long long>(best.lockSize),
       best.csOk ? " derived" : " assumed", best.counts[0],
       best.counts[1], best.counts[2], best.counts[3], best.keysValid,
-      best.keysSampled, best.score);
+      best.keysSampled, best.score,
+      static_cast<unsigned long long>(GetTickCount64() - searchStart),
+      static_cast<unsigned long long>(scannedSectionBytes.load() >> 20),
+      static_cast<unsigned long long>(proofMs));
 
   if (bestRejected.address && bestRejected.score > best.score) {
     Log("[Discovery] GUObjectHashTables larger chain rejected at %p "
@@ -2503,12 +2690,16 @@ bool FindGlobals(EngineState &state) {
   std::thread t4([&state]() { FindGNatives(state); });
   std::thread t5([&state]() { FindGUObjectHashTables(state); });
 
-  t0.join();
   t1.join();
+
+  std::thread fnameThread([&state]() { BuildFNameCache(state); });
+
+  t0.join();
   t2.join();
   t3.join();
   t4.join();
   t5.join();
+  fnameThread.join();
 
   state.bGlobalsFound = (state.GUObjectArray != nullptr || state.GNames != nullptr);
   return state.bGlobalsFound;

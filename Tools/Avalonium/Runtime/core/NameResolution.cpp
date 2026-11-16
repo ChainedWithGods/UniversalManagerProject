@@ -177,6 +177,14 @@ void BuildFNameCache(EngineState &state) {
   std::vector<std::thread> threads;
   threads.reserve(numThreads);
 
+  {
+    std::lock_guard<std::recursive_mutex> indexLock(*state.IndexMutex);
+    state.NameTextShards.clear();
+    state.NameTextShards.resize(
+        highestChunk >= 0 ? static_cast<size_t>(highestChunk) + 1 : 0);
+    state.FNameExtraNames.clear();
+  }
+
   for (unsigned int t = 0; t < numThreads; t++) {
     threads.emplace_back([&state, &threadArenas, &scannedSlots, chunksStart, blockArrayPtr, highestChunk, numThreads, t, maxSlots, &nameCount]() {
       SafeMem_SetFastMode(1);
@@ -231,6 +239,8 @@ void BuildFNameCache(EngineState &state) {
                 dst[utf8.size()] = '\0';
                 if ((size_t)nameIdx < maxSlots) {
                   state.FNameCacheArray[nameIdx] = dst;
+                  state.NameTextShards[chunkIdx].try_emplace(
+                      std::string_view(dst, utf8.size()), nameIdx);
                   localCount++;
                 }
                 arenaUsed += req;
@@ -250,6 +260,8 @@ void BuildFNameCache(EngineState &state) {
                 }
                 if ((size_t)nameIdx < maxSlots) {
                   state.FNameCacheArray[nameIdx] = dst;
+                  state.NameTextShards[chunkIdx].try_emplace(
+                      std::string_view(dst, size), nameIdx);
                   localCount++;
                 }
                 arenaUsed += req;
@@ -271,20 +283,18 @@ void BuildFNameCache(EngineState &state) {
   for (auto &th : threads) {
     if (th.joinable()) th.join();
   }
+  const auto walkEndTime = std::chrono::high_resolution_clock::now();
+  const long long walkMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               walkEndTime - startTime).count();
 
   std::lock_guard<std::recursive_mutex> indexLock(*state.IndexMutex);
 
   state.FNameThreadArenas = std::move(threadArenas);
   state.StringToFNameIndex.clear();
 
-  state.NameTextToIndex.clear();
-  state.FNameExtraNames.clear();
-  state.NameTextToIndex.reserve(static_cast<size_t>(nameCount.load()) * 3 / 2);
-  for (size_t slot = 0; slot < state.FNameCacheArray.size(); ++slot) {
-    const char *text = state.FNameCacheArray[slot];
-    if (!text || !text[0]) continue;
-    state.NameTextToIndex.try_emplace(std::string_view(text), static_cast<int32_t>(slot));
-  }
+  size_t textIndexEntries = 0;
+  for (const auto &shard : state.NameTextShards)
+    textIndexEntries += shard.size();
 
   state.FNamePoolHighestChunk = highestChunk;
   state.FNamePoolNextSlot =
@@ -294,8 +304,26 @@ void BuildFNameCache(EngineState &state) {
 
   auto endTime = std::chrono::high_resolution_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-  Log("[Discovery] Built FName cache: %d names in %lldms (text index %zu entries)",
-      nameCount.load(), ms, state.NameTextToIndex.size());
+  Log("[Discovery] Built FName cache: %d names in %lldms (text index %zu entries; walk %lldms, index %lldms)",
+      nameCount.load(), ms, textIndexEntries, walkMs, ms - walkMs);
+}
+
+int32_t FindNameIndexByText(const EngineState &state, std::string_view text) {
+  for (const auto &shard : state.NameTextShards) {
+    const auto it = shard.find(text);
+    if (it != shard.end())
+      return it->second;
+  }
+  return -1;
+}
+
+void AddNameTextIndex(EngineState &state, std::string_view text, int32_t nameIdx) {
+  const int shift = state.FName_BlockOffsetBits;
+  const size_t shardIndex =
+      shift > 0 ? static_cast<size_t>(static_cast<uint32_t>(nameIdx) >> shift) : 0;
+  if (shardIndex >= state.NameTextShards.size())
+    state.NameTextShards.resize(shardIndex + 1);
+  state.NameTextShards[shardIndex].try_emplace(text, nameIdx);
 }
 
 void RefreshFNamePoolDelta(EngineState &state) {
@@ -404,11 +432,11 @@ void RefreshFNamePoolDelta(EngineState &state) {
         }
 
         if (!text.empty() && text[0] != '<' &&
-            state.NameTextToIndex.find(std::string_view(text)) == state.NameTextToIndex.end()) {
+            FindNameIndexByText(state, std::string_view(text)) < 0) {
           const int32_t nameIdx = (chunk << state.FName_BlockOffsetBits) | slot;
           state.FNameExtraNames.push_back(std::move(text));
           const std::string &stored = state.FNameExtraNames.back();
-          state.NameTextToIndex.emplace(std::string_view(stored), nameIdx);
+          AddNameTextIndex(state, std::string_view(stored), nameIdx);
           state.FNameCache[nameIdx] = stored;
           state.StringToFNameIndex[stored] = nameIdx;
         }

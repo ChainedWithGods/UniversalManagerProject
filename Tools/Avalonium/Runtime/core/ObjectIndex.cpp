@@ -353,20 +353,20 @@ int32_t ResolveFNameIndex(EngineState &state, const std::string &name) {
   const std::string_view query(name);
   {
     std::lock_guard<std::recursive_mutex> lock(*state.IndexMutex);
-    auto it = state.NameTextToIndex.find(query);
-    if (it != state.NameTextToIndex.end()) {
-      state.StringToFNameIndex[name] = it->second;
-      return it->second;
+    const int32_t indexed = FindNameIndexByText(state, query);
+    if (indexed >= 0) {
+      state.StringToFNameIndex[name] = indexed;
+      return indexed;
     }
   }
 
   RefreshFNamePoolDelta(state);
 
   std::lock_guard<std::recursive_mutex> lock(*state.IndexMutex);
-  auto it = state.NameTextToIndex.find(query);
-  if (it != state.NameTextToIndex.end()) {
-    state.StringToFNameIndex[name] = it->second;
-    return it->second;
+  const int32_t indexed = FindNameIndexByText(state, query);
+  if (indexed >= 0) {
+    state.StringToFNameIndex[name] = indexed;
+    return indexed;
   }
   return -1;
 }

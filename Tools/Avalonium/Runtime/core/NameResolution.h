@@ -1,10 +1,15 @@
 #pragma once
 #include "Types.h"
 #include <string>
+#include <string_view>
 
 namespace EngineDiscovery {
 
 void BuildFNameCache(EngineState &state);
+
+int32_t FindNameIndexByText(const EngineState &state, std::string_view text);
+
+void AddNameTextIndex(EngineState &state, std::string_view text, int32_t nameIdx);
 
 void RefreshFNamePoolDelta(EngineState &state);
 

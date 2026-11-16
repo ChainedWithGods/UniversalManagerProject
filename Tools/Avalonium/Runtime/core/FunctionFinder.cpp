@@ -176,6 +176,12 @@ struct StaticConstructSearchStats {
 
   size_t rfPopulationHits = 0;
   size_t rfPopulationCandidates = 0;
+
+  size_t paramLawHits = 0;
+  size_t paramLawCallTargets = 0;
+  size_t paramLawCandidates = 0;
+  uint32_t paramLawWinnerCallers = 0;
+  uint32_t paramLawRunnerUpCallers = 0;
 };
 
 struct NativeFunctionEntry {
@@ -620,9 +626,12 @@ static std::vector<uintptr_t> FindAllModulePatternMatches(
   return matches;
 }
 
-static std::vector<uintptr_t> FindRipLeaXrefs(
-    const std::vector<ExecutableRange> &ranges, uintptr_t referencedAddress) {
+static std::vector<uintptr_t>
+FindRipLeaXrefsToAnyTarget(const std::vector<ExecutableRange> &ranges,
+                           const std::unordered_set<uintptr_t> &targets) {
   std::vector<uintptr_t> xrefs;
+  if (targets.empty())
+    return xrefs;
   constexpr size_t kChunkSize = 256 * 1024;
   std::vector<uint8_t> code(kChunkSize);
   for (const auto &range : ranges) {
@@ -643,7 +652,7 @@ static std::vector<uintptr_t> FindRipLeaXrefs(
             continue;
           int32_t displacement = 0;
           memcpy(&displacement, code.data() + i + 3, sizeof(displacement));
-          if (cursor + i + 7 + displacement == referencedAddress)
+          if (targets.count(cursor + i + 7 + displacement))
             xrefs.push_back(cursor + i);
         }
       }
@@ -710,31 +719,30 @@ static void FindStaticConstructNewObjectStringCandidates(
   };
   std::unordered_map<uintptr_t, TargetHit> hitsByTarget;
 
-  for (const uintptr_t stringAddress : strings) {
-    for (const uintptr_t xref : FindRipLeaXrefs(ranges, stringAddress)) {
-      ++stats.newObjectXrefs;
-      constexpr uintptr_t kBefore = 0x200;
-      constexpr size_t kWindow = 0xA00;
-      const uintptr_t start = xref > kBefore ? xref - kBefore : xref;
-      uint8_t code[kWindow] = {};
-      if (!SafeMem_Read(reinterpret_cast<void *>(start), code, sizeof(code)))
+  const std::unordered_set<uintptr_t> stringSet(strings.begin(), strings.end());
+  for (const uintptr_t xref : FindRipLeaXrefsToAnyTarget(ranges, stringSet)) {
+    ++stats.newObjectXrefs;
+    constexpr uintptr_t kBefore = 0x200;
+    constexpr size_t kWindow = 0xA00;
+    const uintptr_t start = xref > kBefore ? xref - kBefore : xref;
+    uint8_t code[kWindow] = {};
+    if (!SafeMem_Read(reinterpret_cast<void *>(start), code, sizeof(code)))
+      continue;
+    for (size_t i = 0; i + 5 <= sizeof(code); ++i) {
+      if (code[i] != 0xE8)
         continue;
-      for (size_t i = 0; i + 5 <= sizeof(code); ++i) {
-        if (code[i] != 0xE8)
-          continue;
-        int32_t displacement = 0;
-        memcpy(&displacement, code + i + 1, sizeof(displacement));
-        const uintptr_t callSite = start + i;
-        const uintptr_t target = callSite + 5 + displacement;
-        if (!IsExecutableAddress(ranges, target))
-          continue;
-        auto &hit = hitsByTarget[target];
-        if (hit.hits == 0) {
-          hit.callSite = callSite;
-          hit.xref = xref;
-        }
-        ++hit.hits;
+      int32_t displacement = 0;
+      memcpy(&displacement, code + i + 1, sizeof(displacement));
+      const uintptr_t callSite = start + i;
+      const uintptr_t target = callSite + 5 + displacement;
+      if (!IsExecutableAddress(ranges, target))
+        continue;
+      auto &hit = hitsByTarget[target];
+      if (hit.hits == 0) {
+        hit.callSite = callSite;
+        hit.xref = xref;
       }
+      ++hit.hits;
     }
   }
 
@@ -760,6 +768,169 @@ static void FindStaticConstructNewObjectStringCandidates(
                           "newobject-string"});
     return;
   }
+}
+
+static void FindStaticConstructByParamStructLaw(
+    const std::vector<ExecutableRange> &ranges,
+    std::vector<StaticConstructCandidate> &candidates,
+    StaticConstructSearchStats &stats) {
+  static constexpr uint8_t kMask[] = {0x80, 0x00, 0x00, 0x10};
+  constexpr size_t kChunkSize = 256 * 1024;
+  constexpr uintptr_t kStartWindow = 0x2000;
+
+  std::vector<ExecutableRange> sortedRanges = ranges;
+  std::sort(sortedRanges.begin(), sortedRanges.end(),
+            [](const ExecutableRange &a, const ExecutableRange &b) {
+              return a.begin < b.begin;
+            });
+  const auto isExecutable = [&sortedRanges](uintptr_t address) {
+    const auto it = std::upper_bound(
+        sortedRanges.begin(), sortedRanges.end(), address,
+        [](uintptr_t value, const ExecutableRange &range) {
+          return value < range.begin;
+        });
+    if (it == sortedRanges.begin())
+      return false;
+    const ExecutableRange &range = *(it - 1);
+    return address >= range.begin && address < range.end;
+  };
+
+  unsigned int threadCount = std::thread::hardware_concurrency();
+  if (threadCount == 0)
+    threadCount = 4;
+  if (threadCount > 8)
+    threadCount = 8;
+  if (ranges.size() < threadCount)
+    threadCount = static_cast<unsigned int>(ranges.size());
+
+  struct ScanResult {
+    std::vector<uintptr_t> maskHits;
+    std::vector<uintptr_t> callTargets;
+  };
+  std::vector<ScanResult> results(threadCount);
+  std::atomic<size_t> nextRange{0};
+  std::vector<std::thread> workers;
+  workers.reserve(threadCount);
+  for (unsigned int w = 0; w < threadCount; ++w) {
+    workers.emplace_back([&, w]() {
+      FastMemScope fastMem;
+      ScanResult &result = results[w];
+      std::vector<uint8_t> code(kChunkSize);
+      for (;;) {
+        const size_t r = nextRange.fetch_add(1, std::memory_order_relaxed);
+        if (r >= ranges.size())
+          break;
+        const ExecutableRange &range = ranges[r];
+        for (uintptr_t cursor = range.begin; cursor < range.end;) {
+          const size_t toRead = static_cast<size_t>(
+              (std::min)(range.end - cursor, static_cast<uintptr_t>(kChunkSize)));
+          if (toRead < 5)
+            break;
+          if (SafeMem_ReadSpanExact(reinterpret_cast<const void *>(cursor),
+                                    code.data(), toRead) != toRead) {
+            cursor += toRead;
+            continue;
+          }
+          const uint8_t *data = code.data();
+          const uint8_t *dataEnd = data + toRead;
+          const uint8_t *call = data;
+          while (call + 5 <= dataEnd) {
+            const uint8_t *found = static_cast<const uint8_t *>(
+                memchr(call, 0xE8, static_cast<size_t>(dataEnd - call) - 4));
+            if (!found)
+              break;
+            int32_t rel = 0;
+            memcpy(&rel, found + 1, sizeof(rel));
+            const uintptr_t target =
+                cursor + static_cast<uintptr_t>(found - data) + 5 + rel;
+            if (isExecutable(target))
+              result.callTargets.push_back(target);
+            call = found + 1;
+          }
+          const uint8_t *scan = data;
+          while (scan + 4 <= dataEnd) {
+            const uint8_t *found = static_cast<const uint8_t *>(memchr(
+                scan, kMask[0], static_cast<size_t>(dataEnd - scan) - 3));
+            if (!found)
+              break;
+            if (memcmp(found, kMask, sizeof(kMask)) == 0)
+              result.maskHits.push_back(
+                  cursor + static_cast<uintptr_t>(found - data));
+            scan = found + 1;
+          }
+          cursor += toRead;
+        }
+      }
+    });
+  }
+  for (auto &worker : workers)
+    worker.join();
+
+  std::vector<uintptr_t> maskHits;
+  std::vector<uintptr_t> targets;
+  size_t targetCount = 0;
+  for (const auto &result : results) {
+    maskHits.insert(maskHits.end(), result.maskHits.begin(),
+                    result.maskHits.end());
+    targetCount += result.callTargets.size();
+  }
+  targets.reserve(targetCount);
+  for (const auto &result : results)
+    targets.insert(targets.end(), result.callTargets.begin(),
+                   result.callTargets.end());
+  stats.paramLawHits = maskHits.size();
+  stats.paramLawCallTargets = targets.size();
+  if (maskHits.empty() || targets.empty())
+    return;
+  std::sort(targets.begin(), targets.end());
+
+  struct LawCandidate {
+    uintptr_t start = 0;
+    int reads = 0;
+    uint32_t callers = 0;
+  };
+  std::vector<LawCandidate> ranked;
+  std::unordered_set<uintptr_t> probed;
+  for (const uintptr_t hit : maskHits) {
+    const uintptr_t windowBegin = hit > kStartWindow ? hit - kStartWindow : 0;
+    auto it = std::lower_bound(targets.begin(), targets.end(), windowBegin);
+    while (it != targets.end() && *it <= hit) {
+      const uintptr_t start = *it;
+      const auto next = std::upper_bound(it, targets.end(), start);
+      const uint32_t callers = static_cast<uint32_t>(next - it);
+      it = next;
+      if (!probed.insert(start).second)
+        continue;
+      if (!ProbeStaticConstructBody(start).maskInBody)
+        continue;
+      const int reads = ScoreStaticConstructParameterReads(start);
+      if (reads < 3)
+        continue;
+      ranked.push_back({start, reads, callers});
+    }
+  }
+  if (ranked.empty())
+    return;
+  std::sort(ranked.begin(), ranked.end(),
+            [](const LawCandidate &a, const LawCandidate &b) {
+              if (a.callers != b.callers)
+                return a.callers > b.callers;
+              if (a.reads != b.reads)
+                return a.reads > b.reads;
+              return a.start < b.start;
+            });
+  stats.paramLawWinnerCallers = ranked.front().callers;
+  if (ranked.size() > 1)
+    stats.paramLawRunnerUpCallers = ranked[1].callers;
+
+  if (ranked.front().callers < 16)
+    return;
+  if (ranked.size() > 1 && ranked.front().callers < ranked[1].callers * 4)
+    return;
+  ++stats.paramLawCandidates;
+  ++stats.rfFlagMatches;
+  candidates.push_back({ranked.front().start, 0, 0, -1, ranked.front().reads,
+                        "param-struct-law"});
 }
 
 static void FindStaticConstructByCallerFrequency(
@@ -1065,20 +1236,27 @@ FindVerifiedStaticConstructCandidates(EngineState &state,
   if (ranges.empty())
     return candidates;
 
-  FindStaticConstructByCallerFrequency(state, ranges, candidates, stats);
+  FindStaticConstructExportCandidate(ranges, candidates, stats);
   if (candidates.size() == 1) {
     return candidates;
   }
 
   if (candidates.empty()) {
-    FindStaticConstructNewObjectStringCandidates(mainMod, ranges, candidates, stats);
+    FindStaticConstructByParamStructLaw(ranges, candidates, stats);
     if (candidates.size() == 1) {
       return candidates;
     }
   }
 
   if (candidates.empty()) {
-    FindStaticConstructExportCandidate(ranges, candidates, stats);
+    FindStaticConstructByCallerFrequency(state, ranges, candidates, stats);
+    if (candidates.size() == 1) {
+      return candidates;
+    }
+  }
+
+  if (candidates.empty()) {
+    FindStaticConstructNewObjectStringCandidates(mainMod, ranges, candidates, stats);
     if (candidates.size() == 1) {
       return candidates;
     }
@@ -1123,13 +1301,15 @@ bool FindStaticConstructObject(EngineState &state) {
   const auto candidates = FindVerifiedStaticConstructCandidates(
       state, PatternScan::GetMainModule(), stats);
   if (IsVerboseLoggingEnabled()) {
-    Log("[Discovery] StaticConstructObject verifier: signature-matches=%zu rf-flag-matches=%zu newobject-strings=%zu newobject-xrefs=%zu newobject-candidates=%zu anchors=%zu native-functions=%zu native-entries=%zu native-field=0x%X direct-calls=%zu stack-parameter-calls=%zu structural-matches=%zu exports=%zu freq-calls=%zu freq-candidates=%zu rf-pop-hits=%zu rf-pop-candidates=%zu.",
+    Log("[Discovery] StaticConstructObject verifier: signature-matches=%zu rf-flag-matches=%zu newobject-strings=%zu newobject-xrefs=%zu newobject-candidates=%zu anchors=%zu native-functions=%zu native-entries=%zu native-field=0x%X direct-calls=%zu stack-parameter-calls=%zu structural-matches=%zu exports=%zu freq-calls=%zu freq-candidates=%zu rf-pop-hits=%zu rf-pop-candidates=%zu param-hits=%zu param-targets=%zu param-candidates=%zu param-winner-callers=%u param-runnerup=%u.",
         stats.signatureMatches, stats.rfFlagMatches, stats.newObjectStrings,
         stats.newObjectXrefs, stats.newObjectCandidates, stats.anchors,
         stats.nativeFunctions, stats.nativeEntries, stats.nativeFieldOffset,
         stats.directCalls, stats.stackParameterCalls, stats.structuralMatches,
         stats.exportCandidates, stats.callerFreqCallSites, stats.callerFreqCandidates,
-        stats.rfPopulationHits, stats.rfPopulationCandidates);
+        stats.rfPopulationHits, stats.rfPopulationCandidates,
+        stats.paramLawHits, stats.paramLawCallTargets, stats.paramLawCandidates,
+        stats.paramLawWinnerCallers, stats.paramLawRunnerUpCallers);
   }
   if (candidates.size() != 1) {
     Log("[Discovery] StaticConstructObject_Internal NOT confirmed: verifier found %zu candidate(s); refusing to select one.",
@@ -1167,6 +1347,16 @@ bool FindStaticConstructObject(EngineState &state) {
         reinterpret_cast<void *>(candidate.callSite));
   }
   return true;
+}
+
+bool EnsureStaticConstructObject(EngineState &state) {
+  if (state.StaticConstructObject)
+    return true;
+  if (!state.bIndexBuilt || !state.UFunctionClass)
+    return false;
+  static std::once_flag once;
+  std::call_once(once, [&state]() { FindStaticConstructObject(state); });
+  return state.StaticConstructObject != nullptr;
 }
 
 namespace {

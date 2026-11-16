@@ -124,7 +124,9 @@ bool Initialize(EngineState &state, bool skipConsoleManager) {
     FindCoreClasses(state);
     BuildObjectIndex(state);
     RebuildFunctionCache(state);
-    FindStaticConstructObject(state);
+    if (runtimeConfig.EnableLuaMods || runtimeConfig.EnableCppMods) {
+      FindStaticConstructObject(state);
+    }
     if (state.bCoreClassesFound) {
       DiscoverWorldLayout(state);
     }
@@ -202,8 +204,6 @@ bool Initialize(EngineState &state, bool skipConsoleManager) {
              "Failed to discover memory layout");
     return false;
   }
-
-  BuildFNameCache(state);
 
   FindEngineFunctions(state, skipConsoleManager);
   FindCoreClasses(state);
@@ -307,7 +307,12 @@ bool Initialize(EngineState &state, bool skipConsoleManager) {
       state.LiveUFunctions.size(), state.FunctionByFullKey.size(),
       state.FunctionByNameOnly.size());
 
-  FindStaticConstructObject(state);
+  if (runtimeConfig.EnableLuaMods || runtimeConfig.EnableCppMods) {
+    FindStaticConstructObject(state);
+  } else {
+    Log("[Discovery] StaticConstructObject deferred: no mod runtime needs direct "
+        "construction at startup.");
+  }
 
   FindProcessInternal(state);
   FindProcessLocalScriptFunction(state);
