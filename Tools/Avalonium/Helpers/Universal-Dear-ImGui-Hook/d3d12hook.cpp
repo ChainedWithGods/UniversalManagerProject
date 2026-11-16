@@ -16,7 +16,6 @@ namespace d3d12hook {
     SetFullscreenStateFn    oSetFullscreenStateD3D12 = nullptr;
     ResizeTargetFn          oResizeTargetD3D12 = nullptr;
 
-
     static ID3D12Device* gDevice = nullptr;
     static ID3D12CommandQueue* gCommandQueue = nullptr;
     static ID3D12CommandQueue* gCandidateCommandQueue = nullptr;
@@ -49,15 +48,12 @@ namespace d3d12hook {
     static ULONGLONG              gLastRejectedWindowLogTick = 0;
     static ULONGLONG              gLastDx12ActivityTick = 0;
 
-    // Some engines alternate between several direct queues every frame; only
-    // report switches to queues we have not seen before.
     static constexpr UINT         kRecentDirectQueueCapacity = 8;
     static ID3D12CommandQueue*    gRecentDirectQueues[kRecentDirectQueueCapacity] = {};
     static UINT                   gRecentDirectQueueCount = 0;
 
     void release();
 
-    // Utility to log HRESULTs
     inline void LogHRESULT(const char* label, HRESULT hr) {
         if (FAILED(hr)) {
             ErrorLog("[d3d12hook] ERROR: %s: hr=0x%08X\n", label, hr);
@@ -71,13 +67,6 @@ namespace d3d12hook {
         gLastDx12ActivityTick = GetTickCount64();
     }
 
-    // ---------------------------------------------------------------------
-    // Overlay SRV heap
-    //
-    // The ImGui DX12 backend binds a GPU descriptor handle per draw, so every
-    // texture drawn through it needs a descriptor in the heap that Present
-    // binds. The heap is shared by the font atlas and any mod texture view.
-    // ---------------------------------------------------------------------
     static constexpr UINT kSrvHeapCapacity = 4096;
     static std::mutex gSrvMutex;
     static UINT gSrvNextSlot = 0;
@@ -148,22 +137,35 @@ namespace d3d12hook {
         FreeSrvSlot(cpu);
     }
 
-    static DXGI_FORMAT ViewableFormat(DXGI_FORMAT format)
+    static DXGI_FORMAT ViewableFormat(DXGI_FORMAT format, bool srgb)
     {
         switch (format)
         {
-        case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+            return srgb ? DXGI_FORMAT_B8G8R8A8_UNORM_SRGB : DXGI_FORMAT_B8G8R8A8_UNORM;
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+            return srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+        case DXGI_FORMAT_BC1_TYPELESS:
+            return srgb ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM;
+        case DXGI_FORMAT_BC2_TYPELESS:
+            return srgb ? DXGI_FORMAT_BC2_UNORM_SRGB : DXGI_FORMAT_BC2_UNORM;
+        case DXGI_FORMAT_BC3_TYPELESS:
+            return srgb ? DXGI_FORMAT_BC3_UNORM_SRGB : DXGI_FORMAT_BC3_UNORM;
+        case DXGI_FORMAT_BC7_TYPELESS:
+            return srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM;
+        case DXGI_FORMAT_BC4_TYPELESS: return DXGI_FORMAT_BC4_UNORM;
+        case DXGI_FORMAT_BC5_TYPELESS: return DXGI_FORMAT_BC5_UNORM;
+        case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+        case DXGI_FORMAT_R8G8_TYPELESS: return DXGI_FORMAT_R8G8_UNORM;
+        case DXGI_FORMAT_R8_TYPELESS: return DXGI_FORMAT_R8_UNORM;
+        case DXGI_FORMAT_R16G16_TYPELESS: return DXGI_FORMAT_R16G16_UNORM;
         case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
-        case DXGI_FORMAT_BC1_TYPELESS: return DXGI_FORMAT_BC1_UNORM_SRGB;
-        case DXGI_FORMAT_BC2_TYPELESS: return DXGI_FORMAT_BC2_UNORM_SRGB;
-        case DXGI_FORMAT_BC3_TYPELESS: return DXGI_FORMAT_BC3_UNORM_SRGB;
-        case DXGI_FORMAT_BC7_TYPELESS: return DXGI_FORMAT_BC7_UNORM_SRGB;
+        case DXGI_FORMAT_R32_TYPELESS: return DXGI_FORMAT_R32_FLOAT;
         default: return format;
         }
     }
 
-    static uint64_t CreateTextureViewFromResource(void* resourcePointer)
+    static uint64_t CreateTextureViewFromResource(void* resourcePointer, bool srgb)
     {
         if (!gDx12BackendInitialized || !gDevice || !gHeapSRV || !resourcePointer) return 0;
 
@@ -190,7 +192,7 @@ namespace d3d12hook {
 
         D3D12_SHADER_RESOURCE_VIEW_DESC view{};
         view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        view.Format = ViewableFormat(desc.Format);
+        view.Format = ViewableFormat(desc.Format, srgb);
         if (desc.DepthOrArraySize > 1)
         {
             view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
@@ -233,9 +235,23 @@ namespace d3d12hook {
         return gTextureEpoch;
     }
 
-    uint64_t CreateTextureView(void* resource)
+    uint64_t CreateTextureView(void* resource, bool srgb)
     {
-        return CreateTextureViewFromResource(resource);
+        return CreateTextureViewFromResource(resource, srgb);
+    }
+
+    void ReleaseTextureView(uint64_t view)
+    {
+        if (!gHeapSRV || gSrvSlotSize == 0 || !view) return;
+        const UINT64 base = gHeapSRV->GetGPUDescriptorHandleForHeapStart().ptr;
+        if (view < base) return;
+        const UINT64 slot = (view - base) / gSrvSlotSize;
+        if (slot >= kSrvHeapCapacity) return;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
+        cpu.ptr = gHeapSRV->GetCPUDescriptorHandleForHeapStart().ptr +
+                  static_cast<SIZE_T>(slot) * gSrvSlotSize;
+        FreeSrvSlot(cpu);
     }
 
     static void ReleaseCandidateCommandQueue()
@@ -349,7 +365,6 @@ namespace d3d12hook {
         DebugLog("[d3d12hook] Promoted candidate CommandQueue=%p for tracked device %p\n", gCommandQueue, gDevice);
         return true;
     }
-
 
     static void ReleaseFrameContexts()
 
@@ -490,7 +505,6 @@ namespace d3d12hook {
 
     }
 
-
     static bool IsUsableOutputWindow(HWND hwnd)
     {
         if (!hwnd || !IsWindow(hwnd))
@@ -549,7 +563,6 @@ namespace d3d12hook {
         return sameDevice;
     }
 
-
     static void LogRejectedWindow(bool hasDesc, HWND hwnd)
     {
         const ULONGLONG now = GetTickCount64();
@@ -591,8 +604,6 @@ namespace d3d12hook {
             DebugLog("[d3d12hook] Closing menu for %s transition and delaying menu restore\n", reason);
         }
 
-
-
         ResetState(false, false);
     }
 
@@ -623,7 +634,6 @@ namespace d3d12hook {
         return !gShutdown && !gInitialized &&
             (gSawCompatibleSwapChain || gCommandQueue != nullptr || gCandidateCommandQueue != nullptr || recentDx12Activity);
     }
-
 
     long __fastcall hookPresentD3D12(IDXGISwapChain3* pSwapChain, UINT SyncInterval, UINT Flags) {
         if (IsMenuToggleRequested()) {
@@ -812,7 +822,6 @@ namespace d3d12hook {
                 return oPresentD3D12(pSwapChain, SyncInterval, Flags);
             }
 
-            // Render ImGui
             menu::RestoreStateAfterTransition();
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
@@ -833,14 +842,13 @@ namespace d3d12hook {
             }
             FrameContext& ctx = gFrameContexts[frameIdx];
 
-            // Wait for the GPU to finish with THIS frame's allocator before reusing it
             bool canRender = true;
             if (!gOverlayFence || !gFenceEvent) {
-                // Missing synchronization objects, skip waiting
+
             } else if (ctx.FenceValue != 0 && gOverlayFence->GetCompletedValue() < ctx.FenceValue) {
                 HRESULT hr = gOverlayFence->SetEventOnCompletion(ctx.FenceValue, gFenceEvent);
                 if (SUCCEEDED(hr)) {
-                    const DWORD waitTimeoutMs = 2000; // Extended timeout
+                    const DWORD waitTimeoutMs = 2000;
                     DWORD waitRes = WaitForSingleObject(gFenceEvent, waitTimeoutMs);
                     if (waitRes == WAIT_TIMEOUT) {
                         DebugLog("[d3d12hook] WaitForSingleObject timeout\n");
@@ -860,7 +868,6 @@ namespace d3d12hook {
                 return oPresentD3D12(pSwapChain, SyncInterval, Flags);
             }
 
-            // Reset allocator and command list using frame-specific allocator
             HRESULT hr = ctx.allocator->Reset();
             if (FAILED(hr)) {
                 LogHRESULT("CommandAllocator->Reset", hr);
@@ -882,7 +889,6 @@ namespace d3d12hook {
                 return oPresentD3D12(pSwapChain, SyncInterval, Flags);
             }
 
-            // Transition to render target
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Transition.pResource = ctx.renderTarget;
@@ -897,20 +903,18 @@ namespace d3d12hook {
             ImGui::Render();
             ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), gCommandList);
 
-            // Transition back to present
             barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
             barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
             gCommandList->ResourceBarrier(1, &barrier);
             gCommandList->Close();
 
-            // Execute
             if (!gCommandQueue) {
                 DebugLog("[d3d12hook] CommandQueue not set, skipping ExecuteCommandLists.\n");
             }
             else {
                 oExecuteCommandListsD3D12(gCommandQueue, 1, reinterpret_cast<ID3D12CommandList* const*>(&gCommandList));
                 if (gOverlayFence) {
-                    // Call Signal directly on the command queue to synchronize this frame's allocator.
+
                     ctx.FenceValue = ++gOverlayFenceValue;
                     HRESULT hr = gCommandQueue->Signal(gOverlayFence, ctx.FenceValue);
                     if (FAILED(hr)) {
@@ -1121,7 +1125,6 @@ namespace d3d12hook {
                 return oPresent1D3D12(pSwapChain, SyncInterval, Flags, pParams);
             }
 
-            // Render ImGui
             menu::RestoreStateAfterTransition();
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
@@ -1142,14 +1145,13 @@ namespace d3d12hook {
             }
             FrameContext& ctx = gFrameContexts[frameIdx];
 
-            // Wait for the GPU to finish with THIS frame's allocator before reusing it
             bool canRender = true;
             if (!gOverlayFence || !gFenceEvent) {
-                // Missing synchronization objects, skip waiting
+
             } else if (ctx.FenceValue != 0 && gOverlayFence->GetCompletedValue() < ctx.FenceValue) {
                 HRESULT hr = gOverlayFence->SetEventOnCompletion(ctx.FenceValue, gFenceEvent);
                 if (SUCCEEDED(hr)) {
-                    const DWORD waitTimeoutMs = 2000; // Extended timeout
+                    const DWORD waitTimeoutMs = 2000;
                     DWORD waitRes = WaitForSingleObject(gFenceEvent, waitTimeoutMs);
                     if (waitRes == WAIT_TIMEOUT) {
                         DebugLog("[d3d12hook] WaitForSingleObject timeout\n");
@@ -1169,7 +1171,6 @@ namespace d3d12hook {
                 return oPresent1D3D12(pSwapChain, SyncInterval, Flags, pParams);
             }
 
-            // Reset allocator and command list using frame-specific allocator
             HRESULT hr = ctx.allocator->Reset();
             if (FAILED(hr)) {
                 LogHRESULT("CommandAllocator->Reset", hr);
@@ -1191,7 +1192,6 @@ namespace d3d12hook {
                 return oPresent1D3D12(pSwapChain, SyncInterval, Flags, pParams);
             }
 
-            // Transition to render target
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Transition.pResource = ctx.renderTarget;
@@ -1206,20 +1206,18 @@ namespace d3d12hook {
             ImGui::Render();
             ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), gCommandList);
 
-            // Transition back to present
             barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
             barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
             gCommandList->ResourceBarrier(1, &barrier);
             gCommandList->Close();
 
-            // Execute
             if (!gCommandQueue) {
                 DebugLog("[d3d12hook] CommandQueue not set, skipping ExecuteCommandLists.\n");
             }
             else {
                 oExecuteCommandListsD3D12(gCommandQueue, 1, reinterpret_cast<ID3D12CommandList* const*>(&gCommandList));
                 if (gOverlayFence) {
-                    // Call Signal directly on the command queue to synchronize this frame's allocator.
+
                     ctx.FenceValue = ++gOverlayFenceValue;
                     HRESULT hr = gCommandQueue->Signal(gOverlayFence, ctx.FenceValue);
                     if (FAILED(hr)) {
@@ -1288,8 +1286,6 @@ namespace d3d12hook {
         gAfterFirstPresent = false;
         oExecuteCommandListsD3D12(_this, NumCommandLists, ppCommandLists);
     }
-
-
 
     HRESULT STDMETHODCALLTYPE hookResizeBuffersD3D12(
         IDXGISwapChain3* pSwapChain,
@@ -1384,7 +1380,6 @@ namespace d3d12hook {
         return hr;
     }
 
-
     HRESULT STDMETHODCALLTYPE hookSetFullscreenStateD3D12(
         IDXGISwapChain3* pSwapChain,
         BOOL Fullscreen,
@@ -1426,7 +1421,6 @@ namespace d3d12hook {
         return oResizeTargetD3D12(pSwapChain, pNewTargetParameters);
     }
 
-
     void release() {
         DebugLog("[d3d12hook] Releasing resources and hooks.\n");
         gShutdown = true;
@@ -1434,7 +1428,6 @@ namespace d3d12hook {
         gLastRejectedWindowLogTick = 0;
         ResetState(true, true);
 
-        // Disable hooks installed for D3D12
         hooks::Remove();
     }
 
@@ -1454,7 +1447,12 @@ extern "C" uint32_t D3D12Hook_TextureEpoch()
     return d3d12hook::TextureEpoch();
 }
 
-extern "C" uint64_t D3D12Hook_CreateTextureView(void* resource)
+extern "C" uint64_t D3D12Hook_CreateTextureView(void* resource, bool srgb)
 {
-    return d3d12hook::CreateTextureView(resource);
+    return d3d12hook::CreateTextureView(resource, srgb);
+}
+
+extern "C" void D3D12Hook_ReleaseTextureView(uint64_t view)
+{
+    d3d12hook::ReleaseTextureView(view);
 }

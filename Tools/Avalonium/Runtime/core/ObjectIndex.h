@@ -48,6 +48,9 @@ void InvalidateObjectFromCache(EngineState &state, UObject *obj);
 
 uint32_t GetInternalObjectFlags(const EngineState &state, UObject *obj);
 
+bool SetInternalObjectFlags(EngineState &state, UObject *obj, uint32_t mask,
+                            bool enabled);
+
 bool IsPendingKillObject(const EngineState &state, UObject *obj);
 
 }

@@ -894,70 +894,6 @@ namespace Avalonium::CppMods
             return view;
         }
 
-        ID3D11ShaderResourceView* FindD3D11TextureView(void* texture)
-        {
-            static std::mutex cacheMutex;
-            static std::unordered_map<void*, ID3D11ShaderResourceView*> cache;
-            {
-                std::lock_guard<std::mutex> lock(cacheMutex);
-                const auto found = cache.find(texture);
-                if (found != cache.end()) return found->second;
-            }
-
-            uintptr_t d3d11Base = 0;
-            uintptr_t gameBase = 0;
-            size_t d3d11Size = 0;
-            size_t gameSize = 0;
-            if (!ModuleImageSize(GetModuleHandleA("d3d11.dll"), d3d11Base, d3d11Size) ||
-                !ModuleImageSize(GetModuleHandleA(nullptr), gameBase, gameSize))
-            {
-                return nullptr;
-            }
-
-            std::vector<std::pair<uintptr_t, int>> pending;
-            std::unordered_set<uintptr_t> visited;
-            pending.emplace_back(reinterpret_cast<uintptr_t>(texture), 0);
-            size_t budget = 192;
-            while (!pending.empty() && budget-- > 0)
-            {
-                const auto [address, depth] = pending.back();
-                pending.pop_back();
-                if (depth > 3 || !visited.insert(address).second) continue;
-
-                uint8_t buffer[0x100] = {};
-                if (!SafeMem_Read(reinterpret_cast<void*>(address), buffer, sizeof(buffer)))
-                    continue;
-
-                for (int offset = 0x8; offset <= 0xF8; offset += 8)
-                {
-                    uintptr_t candidate = 0;
-                    std::memcpy(&candidate, buffer + offset, sizeof(candidate));
-                    if (candidate < 0x10000 || candidate > 0x7FFFFFFFFFFF) continue;
-
-                    uintptr_t vtable = 0;
-                    if (!SafeMem_Read(reinterpret_cast<void*>(candidate), &vtable,
-                                      sizeof(vtable)))
-                        continue;
-
-                    if (vtable >= d3d11Base && vtable < d3d11Base + d3d11Size)
-                    {
-                        if (ID3D11ShaderResourceView* view =
-                                QueryD3D11ResourceView(candidate))
-                        {
-                            std::lock_guard<std::mutex> lock(cacheMutex);
-                            cache[texture] = view;
-                            return view;
-                        }
-                    }
-                    else if (depth < 3 && vtable >= gameBase && vtable < gameBase + gameSize)
-                    {
-                        pending.emplace_back(candidate, depth + 1);
-                    }
-                }
-            }
-            return nullptr;
-        }
-
         ID3D12Resource* QueryD3D12Resource(uintptr_t candidate)
         {
             ID3D12Resource* resource = nullptr;
@@ -977,60 +913,227 @@ namespace Avalonium::CppMods
             return resource;
         }
 
-        uint64_t FindD3D12TextureView(void* texture)
+        struct TextureClassLayout
         {
-            struct CacheEntry
-            {
-                uint64_t View = 0;
-                uint32_t Epoch = 0;
-            };
-            static std::mutex cacheMutex;
-            static std::unordered_map<void*, CacheEntry> cache;
+            int32_t ImportedSizeOffset = -1;
+            int32_t SrgbOffset = -1;
+            uint8_t SrgbByteOffset = 0;
+            uint8_t SrgbMask = 0;
+            int32_t ObjectSize = 0;
+        };
 
-            const uint32_t epoch = D3D12Hook_TextureEpoch();
+        const TextureClassLayout& GetTextureClassLayout(void* texture)
+        {
+            static std::mutex cacheMutex;
+            static std::unordered_map<void*, TextureClassLayout> cache;
+
+            UClass* textureClass =
+                EngineDiscovery::GetObjectClass(g_State, static_cast<UObject*>(texture));
             {
                 std::lock_guard<std::mutex> lock(cacheMutex);
-                const auto found = cache.find(texture);
-                if (found != cache.end() && found->second.Epoch == epoch)
-                    return found->second.View;
+                const auto found = cache.find(textureClass);
+                if (found != cache.end()) return found->second;
             }
 
+            TextureClassLayout layout;
+            PropertyRef property;
+            if (FindProperty(g_State, textureClass, "ImportedSize", property))
+                layout.ImportedSizeOffset = property.Offset;
+            if (FindProperty(g_State, textureClass, "SRGB", property))
+            {
+                layout.SrgbOffset = property.Offset;
+                layout.SrgbByteOffset = property.BoolByteOffset;
+                layout.SrgbMask = property.BoolByteMask ? property.BoolByteMask : 1;
+            }
+            if (g_State.UStruct_PropertiesSizeOff >= 0)
+            {
+                SafeMem_Read(reinterpret_cast<uint8_t*>(textureClass) +
+                                 g_State.UStruct_PropertiesSizeOff,
+                             &layout.ObjectSize, sizeof(layout.ObjectSize));
+            }
+
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            return cache.emplace(textureClass, layout).first->second;
+        }
+
+        bool TextureImportedSize(void* texture, const TextureClassLayout& layout, int32_t& sizeX,
+                                 int32_t& sizeY)
+        {
+            sizeX = 0;
+            sizeY = 0;
+            if (!texture || layout.ImportedSizeOffset < 0) return false;
+            if (!SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.ImportedSizeOffset,
+                              &sizeX, sizeof(sizeX)) ||
+                !SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.ImportedSizeOffset + 4,
+                              &sizeY, sizeof(sizeY)))
+            {
+                return false;
+            }
+            return sizeX > 0 && sizeY > 0 && sizeX <= 32768 && sizeY <= 32768;
+        }
+
+        bool TextureIsSrgb(void* texture, const TextureClassLayout& layout)
+        {
+            if (!texture || layout.SrgbOffset < 0) return true;
+            uint8_t byte = 0;
+            if (!SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.SrgbOffset +
+                                  layout.SrgbByteOffset,
+                              &byte, sizeof(byte)))
+            {
+                return true;
+            }
+            return (byte & layout.SrgbMask) != 0;
+        }
+
+        bool ModuleRange(HMODULE module, uintptr_t& base, uintptr_t& end)
+        {
+            base = 0;
+            end = 0;
+            size_t size = 0;
+            if (!ModuleImageSize(module, base, size)) return false;
+            end = base + size;
+            return true;
+        }
+
+        bool InModuleRange(uintptr_t address, uintptr_t base, uintptr_t end)
+        {
+            return base != 0 && address >= base && address < end;
+        }
+
+        uintptr_t ReadPointer(const uint8_t* address)
+        {
+            uintptr_t value = 0;
+            std::memcpy(&value, address, sizeof(value));
+            return value;
+        }
+
+        bool PlausiblePointer(uintptr_t value)
+        {
+            return value >= 0x10000 && value <= 0x7FFFFFFFFFFF;
+        }
+
+        constexpr uint32_t kRootSetFlag = 1u << 30;
+
+        struct TextureFailureCache
+        {
+            std::mutex Mutex;
+            std::unordered_map<void*, uint64_t> FailedAt;
+        };
+
+        TextureFailureCache& TextureFailures()
+        {
+            static TextureFailureCache cache;
+            return cache;
+        }
+
+        bool TextureResolutionCoolingDown(void* texture)
+        {
+            auto& cache = TextureFailures();
+            std::lock_guard<std::mutex> lock(cache.Mutex);
+            const auto found = cache.FailedAt.find(texture);
+            if (found == cache.FailedAt.end()) return false;
+            if (GetTickCount64() - found->second < 500) return true;
+            cache.FailedAt.erase(found);
+            return false;
+        }
+
+        void NoteTextureFailure(void* texture)
+        {
+            auto& cache = TextureFailures();
+            std::lock_guard<std::mutex> lock(cache.Mutex);
+            if (cache.FailedAt.size() >= 8192) cache.FailedAt.clear();
+            cache.FailedAt[texture] = GetTickCount64();
+        }
+
+        void NoteTextureSuccess(void* texture)
+        {
+            auto& cache = TextureFailures();
+            std::lock_guard<std::mutex> lock(cache.Mutex);
+            cache.FailedAt.erase(texture);
+        }
+
+        void RootTextureObject(void* texture)
+        {
+            EngineDiscovery::SetInternalObjectFlags(
+                g_State, static_cast<UObject*>(texture), kRootSetFlag, true);
+        }
+
+        bool D3D12ResourceMatchesSize(ID3D12Resource* resource, int32_t wantX, int32_t wantY)
+        {
+            if (!resource) return false;
+            __try
+            {
+                const D3D12_RESOURCE_DESC desc = resource->GetDesc();
+                if (desc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+                    desc.SampleDesc.Count != 1 || desc.MipLevels == 0)
+                {
+                    return false;
+                }
+                if (wantX <= 0 || wantY <= 0) return true;
+                return desc.Width == static_cast<UINT64>(wantX) &&
+                       desc.Height == static_cast<UINT>(wantY);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                return false;
+            }
+        }
+
+        bool D3D11ViewMatchesSize(ID3D11ShaderResourceView* view, int32_t wantX, int32_t wantY)
+        {
+            if (!view) return false;
+            if (wantX <= 0 || wantY <= 0) return true;
+            __try
+            {
+                ID3D11Resource* resource = nullptr;
+                view->GetResource(&resource);
+                if (!resource) return false;
+                ID3D11Texture2D* texture = nullptr;
+                const HRESULT hr = resource->QueryInterface(__uuidof(ID3D11Texture2D),
+                                                            reinterpret_cast<void**>(&texture));
+                resource->Release();
+                if (FAILED(hr) || !texture) return false;
+                D3D11_TEXTURE2D_DESC desc{};
+                texture->GetDesc(&desc);
+                texture->Release();
+                return desc.Width == static_cast<UINT>(wantX) &&
+                       desc.Height == static_cast<UINT>(wantY);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                return false;
+            }
+        }
+
+        ID3D12Resource* ProbeD3D12Resource(uintptr_t rhi, int32_t wantX, int32_t wantY)
+        {
             uintptr_t d3d12Base = 0;
-            uintptr_t d3d12CoreBase = 0;
-            uintptr_t gameBase = 0;
-            size_t d3d12Size = 0;
-            size_t d3d12CoreSize = 0;
-            size_t gameSize = 0;
-            if (!ModuleImageSize(GetModuleHandleA("d3d12.dll"), d3d12Base, d3d12Size) ||
-                !ModuleImageSize(GetModuleHandle(nullptr), gameBase, gameSize))
-            {
-                return 0;
-            }
-            ModuleImageSize(GetModuleHandleA("d3d12core.dll"), d3d12CoreBase,
-                            d3d12CoreSize);
+            uintptr_t d3d12End = 0;
+            uintptr_t coreBase = 0;
+            uintptr_t coreEnd = 0;
+            if (!ModuleRange(GetModuleHandleA("d3d12.dll"), d3d12Base, d3d12End)) return nullptr;
+            ModuleRange(GetModuleHandleA("d3d12core.dll"), coreBase, coreEnd);
 
-            std::vector<std::pair<uintptr_t, int>> pending;
-            std::unordered_set<uintptr_t> visited;
-            pending.emplace_back(reinterpret_cast<uintptr_t>(texture), 0);
-            size_t cursor = 0;
-            size_t budget = 2048;
-            while (cursor < pending.size() && budget-- > 0)
-            {
-                const auto [address, depth] = pending[cursor++];
-                if (depth > 3 || !visited.insert(address).second) continue;
+            uint8_t outer[0x300] = {};
+            if (!SafeMem_Read(reinterpret_cast<void*>(rhi), outer, sizeof(outer)))
+                return nullptr;
 
-                std::vector<uint8_t> buffer(0x300, 0);
-                if (!SafeMem_Read(reinterpret_cast<void*>(address), buffer.data(),
-                                  static_cast<int32_t>(buffer.size())))
+            ID3D12Resource* fallback = nullptr;
+            for (int outerOffset = 0; outerOffset <= 0x2F8; outerOffset += 8)
+            {
+                const uintptr_t level1 = ReadPointer(outer + outerOffset);
+                if (!PlausiblePointer(level1)) continue;
+
+                uint8_t inner[0x60] = {};
+                if (!SafeMem_Read(reinterpret_cast<void*>(level1), inner, sizeof(inner)))
                 {
                     continue;
                 }
 
-                for (int offset = 0x8; offset <= 0x2F8; offset += 8)
+                for (int innerOffset = 0; innerOffset <= 0x58; innerOffset += 8)
                 {
-                    uintptr_t candidate = 0;
-                    std::memcpy(&candidate, buffer.data() + offset, sizeof(candidate));
-                    if (candidate < 0x10000 || candidate > 0x7FFFFFFFFFFF) continue;
+                    const uintptr_t candidate = ReadPointer(inner + innerOffset);
+                    if (!PlausiblePointer(candidate)) continue;
 
                     uintptr_t vtable = 0;
                     if (!SafeMem_Read(reinterpret_cast<void*>(candidate), &vtable,
@@ -1038,41 +1141,338 @@ namespace Avalonium::CppMods
                     {
                         continue;
                     }
-
-                    const bool d3d12Object =
-                        (d3d12Base && vtable >= d3d12Base &&
-                         vtable < d3d12Base + d3d12Size) ||
-                        (d3d12CoreBase && vtable >= d3d12CoreBase &&
-                         vtable < d3d12CoreBase + d3d12CoreSize);
-                    if (d3d12Object)
+                    if (!InModuleRange(vtable, d3d12Base, d3d12End) &&
+                        !InModuleRange(vtable, coreBase, coreEnd))
                     {
-                        ID3D12Resource* resource = QueryD3D12Resource(candidate);
-                        if (!resource) continue;
-
-                        const uint64_t view = D3D12Hook_CreateTextureView(resource);
-                        resource->Release();
-                        if (!view) continue;
-
-                        {
-                            std::lock_guard<std::mutex> lock(cacheMutex);
-                            cache[texture] = CacheEntry{view, epoch};
-                        }
-                        return view;
+                        continue;
                     }
-                    if (depth < 3 && vtable >= gameBase && vtable < gameBase + gameSize)
+
+                    ID3D12Resource* resource = QueryD3D12Resource(candidate);
+                    if (!resource) continue;
+
+                    if (D3D12ResourceMatchesSize(resource, wantX, wantY))
                     {
-                        pending.emplace_back(candidate, depth + 1);
+                        if (fallback) fallback->Release();
+                        return resource;
                     }
+                    if (!fallback) fallback = resource;
+                    else resource->Release();
                 }
             }
-            return 0;
+            return fallback;
+        }
+
+        ID3D11ShaderResourceView* ProbeD3D11View(uintptr_t rhi, int32_t wantX, int32_t wantY)
+        {
+            uintptr_t d3d11Base = 0;
+            uintptr_t d3d11End = 0;
+            if (!ModuleRange(GetModuleHandleA("d3d11.dll"), d3d11Base, d3d11End)) return nullptr;
+
+            uint8_t window[0x200] = {};
+            if (!SafeMem_Read(reinterpret_cast<void*>(rhi), window, sizeof(window)))
+                return nullptr;
+
+            ID3D11ShaderResourceView* fallback = nullptr;
+            for (int offset = 0; offset <= 0x1F8; offset += 8)
+            {
+                const uintptr_t candidate = ReadPointer(window + offset);
+                if (!PlausiblePointer(candidate)) continue;
+
+                uintptr_t vtable = 0;
+                if (!SafeMem_Read(reinterpret_cast<void*>(candidate), &vtable, sizeof(vtable)))
+                    continue;
+                if (!InModuleRange(vtable, d3d11Base, d3d11End)) continue;
+
+                ID3D11ShaderResourceView* view = QueryD3D11ResourceView(candidate);
+                if (!view) continue;
+
+                if (D3D11ViewMatchesSize(view, wantX, wantY))
+                {
+                    if (fallback) fallback->Release();
+                    return view;
+                }
+                if (!fallback) fallback = view;
+                else view->Release();
+            }
+            return fallback;
+        }
+
+        struct TextureChainHit
+        {
+            void* Resource = nullptr;
+            void* Rhi = nullptr;
+            int32_t ResourceOffset = -1;
+            int32_t RhiOffset = -1;
+        };
+
+        int32_t TextureScanBound(const TextureClassLayout& layout)
+        {
+            int32_t bound = layout.ObjectSize;
+            if (bound < 0x100 || bound > 0x1000) bound = 0x600;
+            return bound;
+        }
+
+        bool FindTextureChainD3D12(void* texture, const TextureClassLayout& layout, int32_t wantX,
+                                   int32_t wantY, TextureChainHit& hit, ID3D12Resource** out)
+        {
+            uintptr_t gameBase = 0;
+            uintptr_t gameEnd = 0;
+            if (!ModuleRange(GetModuleHandle(nullptr), gameBase, gameEnd)) return false;
+
+            const int32_t bound = TextureScanBound(layout);
+            std::vector<uint8_t> object(static_cast<size_t>(bound), 0);
+            if (!SafeMem_Read(texture, object.data(), bound)) return false;
+
+            for (int32_t resourceOffset = 0x28; resourceOffset + 8 <= bound;
+                 resourceOffset += 8)
+            {
+                const uintptr_t resource = ReadPointer(object.data() + resourceOffset);
+                if (!PlausiblePointer(resource)) continue;
+
+                uintptr_t vtable = 0;
+                if (!SafeMem_Read(reinterpret_cast<void*>(resource), &vtable, sizeof(vtable)))
+                    continue;
+                if (!InModuleRange(vtable, gameBase, gameEnd)) continue;
+
+                uint8_t window[0x40] = {};
+                if (!SafeMem_Read(reinterpret_cast<void*>(resource), window, sizeof(window)))
+                    continue;
+
+                for (int rhiOffset = 0x8; rhiOffset <= 0x38; rhiOffset += 8)
+                {
+                    const uintptr_t rhi = ReadPointer(window + rhiOffset);
+                    if (!PlausiblePointer(rhi)) continue;
+
+                    uintptr_t rhiVtable = 0;
+                    if (!SafeMem_Read(reinterpret_cast<void*>(rhi), &rhiVtable,
+                                      sizeof(rhiVtable)))
+                    {
+                        continue;
+                    }
+
+                    ID3D12Resource* native = ProbeD3D12Resource(rhi, wantX, wantY);
+                    if (!native) continue;
+
+                    hit.Resource = reinterpret_cast<void*>(resource);
+                    hit.Rhi = reinterpret_cast<void*>(rhi);
+                    hit.ResourceOffset = resourceOffset;
+                    hit.RhiOffset = rhiOffset;
+                    *out = native;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool FindTextureChainD3D11(void* texture, const TextureClassLayout& layout, int32_t wantX,
+                                   int32_t wantY, TextureChainHit& hit,
+                                   ID3D11ShaderResourceView** out)
+        {
+            uintptr_t gameBase = 0;
+            uintptr_t gameEnd = 0;
+            if (!ModuleRange(GetModuleHandle(nullptr), gameBase, gameEnd)) return false;
+
+            const int32_t bound = TextureScanBound(layout);
+            std::vector<uint8_t> object(static_cast<size_t>(bound), 0);
+            if (!SafeMem_Read(texture, object.data(), bound)) return false;
+
+            for (int32_t resourceOffset = 0x28; resourceOffset + 8 <= bound;
+                 resourceOffset += 8)
+            {
+                const uintptr_t resource = ReadPointer(object.data() + resourceOffset);
+                if (!PlausiblePointer(resource)) continue;
+
+                uintptr_t vtable = 0;
+                if (!SafeMem_Read(reinterpret_cast<void*>(resource), &vtable, sizeof(vtable)))
+                    continue;
+                if (!InModuleRange(vtable, gameBase, gameEnd)) continue;
+
+                uint8_t window[0x40] = {};
+                if (!SafeMem_Read(reinterpret_cast<void*>(resource), window, sizeof(window)))
+                    continue;
+
+                for (int rhiOffset = 0x8; rhiOffset <= 0x38; rhiOffset += 8)
+                {
+                    const uintptr_t rhi = ReadPointer(window + rhiOffset);
+                    if (!PlausiblePointer(rhi)) continue;
+
+                    uintptr_t rhiVtable = 0;
+                    if (!SafeMem_Read(reinterpret_cast<void*>(rhi), &rhiVtable,
+                                      sizeof(rhiVtable)))
+                    {
+                        continue;
+                    }
+
+                    ID3D11ShaderResourceView* view = ProbeD3D11View(rhi, wantX, wantY);
+                    if (!view) continue;
+
+                    hit.Resource = reinterpret_cast<void*>(resource);
+                    hit.Rhi = reinterpret_cast<void*>(rhi);
+                    hit.ResourceOffset = resourceOffset;
+                    hit.RhiOffset = rhiOffset;
+                    *out = view;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        struct CachedTextureView
+        {
+            void* ResourceObject = nullptr;
+            void* RhiTexture = nullptr;
+            int32_t ResourceOffset = -1;
+            int32_t RhiOffset = -1;
+            uint32_t Epoch = 0;
+            uint64_t View = 0;
+            IUnknown* Hold = nullptr;
+        };
+
+        bool CachedChainIsCurrent(void* texture, const CachedTextureView& entry)
+        {
+            void* resource = nullptr;
+            if (entry.ResourceOffset < 0 ||
+                !SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + entry.ResourceOffset,
+                              &resource, sizeof(resource)) ||
+                resource != entry.ResourceObject)
+            {
+                return false;
+            }
+
+            void* rhi = nullptr;
+            if (entry.RhiOffset < 0 ||
+                !SafeMem_Read(reinterpret_cast<uint8_t*>(entry.ResourceObject) + entry.RhiOffset,
+                              &rhi, sizeof(rhi)))
+            {
+                return false;
+            }
+            return rhi == entry.RhiTexture;
+        }
+
+        void ReleaseCachedTextureView(CachedTextureView& entry, bool freeViewSlot)
+        {
+            if (entry.Hold)
+            {
+                entry.Hold->Release();
+                entry.Hold = nullptr;
+            }
+            if (freeViewSlot && entry.View) D3D12Hook_ReleaseTextureView(entry.View);
+            entry.View = 0;
+        }
+
+        uint64_t ResolveD3D12TextureView(void* texture)
+        {
+            static std::mutex cacheMutex;
+            static std::unordered_map<void*, CachedTextureView> cache;
+
+            const uint32_t epoch = D3D12Hook_TextureEpoch();
+            {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                const auto found = cache.find(texture);
+                if (found != cache.end())
+                {
+                    if (found->second.Epoch == epoch &&
+                        CachedChainIsCurrent(texture, found->second))
+                    {
+                        return found->second.View;
+                    }
+                    ReleaseCachedTextureView(found->second, found->second.Epoch == epoch);
+                    cache.erase(found);
+                }
+            }
+
+            if (TextureResolutionCoolingDown(texture)) return 0;
+
+            const TextureClassLayout& layout = GetTextureClassLayout(texture);
+            int32_t wantX = 0;
+            int32_t wantY = 0;
+            TextureImportedSize(texture, layout, wantX, wantY);
+            const bool srgb = TextureIsSrgb(texture, layout);
+
+            TextureChainHit hit;
+            ID3D12Resource* resource = nullptr;
+            if (!FindTextureChainD3D12(texture, layout, wantX, wantY, hit, &resource))
+            {
+                NoteTextureFailure(texture);
+                return 0;
+            }
+
+            const uint64_t view = D3D12Hook_CreateTextureView(resource, srgb);
+            if (!view)
+            {
+                resource->Release();
+                NoteTextureFailure(texture);
+                return 0;
+            }
+
+            NoteTextureSuccess(texture);
+
+            CachedTextureView entry;
+            entry.ResourceObject = hit.Resource;
+            entry.RhiTexture = hit.Rhi;
+            entry.ResourceOffset = hit.ResourceOffset;
+            entry.RhiOffset = hit.RhiOffset;
+            entry.Epoch = epoch;
+            entry.View = view;
+            entry.Hold = resource;
+
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            cache[texture] = entry;
+            return view;
+        }
+
+        uint64_t ResolveD3D11TextureView(void* texture)
+        {
+            static std::mutex cacheMutex;
+            static std::unordered_map<void*, CachedTextureView> cache;
+            {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                const auto found = cache.find(texture);
+                if (found != cache.end())
+                {
+                    if (CachedChainIsCurrent(texture, found->second))
+                        return found->second.View;
+                    ReleaseCachedTextureView(found->second, false);
+                    cache.erase(found);
+                }
+            }
+
+            if (TextureResolutionCoolingDown(texture)) return 0;
+
+            const TextureClassLayout& layout = GetTextureClassLayout(texture);
+            int32_t wantX = 0;
+            int32_t wantY = 0;
+            TextureImportedSize(texture, layout, wantX, wantY);
+
+            TextureChainHit hit;
+            ID3D11ShaderResourceView* view = nullptr;
+            if (!FindTextureChainD3D11(texture, layout, wantX, wantY, hit, &view))
+            {
+                NoteTextureFailure(texture);
+                return 0;
+            }
+
+            NoteTextureSuccess(texture);
+
+            CachedTextureView entry;
+            entry.ResourceObject = hit.Resource;
+            entry.RhiTexture = hit.Rhi;
+            entry.ResourceOffset = hit.ResourceOffset;
+            entry.RhiOffset = hit.RhiOffset;
+            entry.View = reinterpret_cast<uint64_t>(view);
+            entry.Hold = view;
+
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            cache[texture] = entry;
+            return entry.View;
         }
 
         uint64_t ApiGetImGuiTexture(void* texture)
         {
             if (!ApiIsValidObject(texture) || !ApiIsA(texture, "Texture2D")) return 0;
-            if (D3D12Hook_TextureBridgeReady()) return FindD3D12TextureView(texture);
-            return reinterpret_cast<uint64_t>(FindD3D11TextureView(texture));
+            if (!ApiIsPendingKill(texture)) RootTextureObject(texture);
+            if (D3D12Hook_TextureBridgeReady()) return ResolveD3D12TextureView(texture);
+            return ResolveD3D11TextureView(texture);
         }
 
         void* ApiGetDataTableRow(void* dataTable, const char* rowName)
