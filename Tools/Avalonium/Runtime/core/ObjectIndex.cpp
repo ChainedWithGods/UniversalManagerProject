@@ -74,12 +74,18 @@ void BuildObjectIndex(EngineState &state) {
 
         int32_t chunkStartIdx = c * elementsPerChunk;
         int32_t countInChunk = std::min(elementsPerChunk, count - chunkStartIdx);
+        if (countInChunk <= 0) continue;
         uint8_t *chunkBytes = (uint8_t *)chunk;
+        if (!SafeMem_IsReadable(chunkBytes, static_cast<size_t>(itemSize) *
+                                                static_cast<size_t>(countInChunk)))
+          continue;
 
         for (int32_t i = 0; i < countInChunk; i++) {
           UObject *obj = *(UObject **)(chunkBytes + i * itemSize + objOff);
           if (!obj || (uintptr_t)obj < 0x10000 || (uintptr_t)obj >= 0x800000000000ULL)
             continue;
+          const int32_t headerNeed = (std::max)((std::max)(nameOff, classOff), 0) + 8;
+          if (!SafeMem_IsReadable(obj, static_cast<size_t>(headerNeed))) continue;
 
           int32_t nameIdx = -1;
           if (nameOff >= 0) {
@@ -190,17 +196,25 @@ std::vector<UObject *> FindObjectsByNameFast(EngineState &state, const std::stri
   int32_t numChunks = (count + elementsPerChunk - 1) / elementsPerChunk;
   void *objectsPtr = SafeMem_ReadPtr((uint8_t *)state.GUObjectArray + state.TUObjectArray_ObjectsOff);
 
-  if (objectsPtr && state.UObject_NameOff >= 0) {
+  if (objectsPtr && state.UObject_NameOff >= 0 &&
+      SafeMem_IsReadable(objectsPtr, static_cast<size_t>(numChunks) * sizeof(void *))) {
     SafeMem_SetFastMode(1);
     for (int32_t c = 0; c < numChunks; c++) {
       void *chunk = SafeMem_ReadPtr((uint8_t *)objectsPtr + c * sizeof(void *));
       if (!chunk) continue;
       int32_t chunkStartIdx = c * elementsPerChunk;
       int32_t countInChunk = std::min(elementsPerChunk, count - chunkStartIdx);
+      if (countInChunk <= 0) continue;
       uint8_t *chunkBytes = (uint8_t *)chunk;
+
+      if (!SafeMem_IsReadable(chunkBytes,
+                              static_cast<size_t>(itemSize) * static_cast<size_t>(countInChunk)))
+        continue;
       for (int32_t i = 0; i < countInChunk; i++) {
         UObject *obj = *(UObject **)(chunkBytes + i * itemSize + objOff);
         if (!obj || (uintptr_t)obj < 0x10000 || (uintptr_t)obj >= 0x800000000000ULL) continue;
+        if (!SafeMem_IsReadable((const uint8_t *)obj + state.UObject_NameOff, sizeof(int32_t)))
+          continue;
         int32_t objNameIdx = ((const FName *)((const uint8_t *)obj + state.UObject_NameOff))->ComparisonIndex;
         if (objNameIdx == nameIdx) {
           results.push_back(obj);
@@ -255,18 +269,32 @@ std::vector<UObject *> FindLiveObjectsByClass(EngineState &state, UClass *cls) {
   };
 
   const int32_t clsOff = state.UObject_ClassOff;
-  if (objectsPtr) {
+  if (objectsPtr &&
+      SafeMem_IsReadable(objectsPtr, static_cast<size_t>(numChunks) * sizeof(void *))) {
     for (int32_t c = 0; c < numChunks; c++) {
       void *chunk = SafeMem_ReadPtr((uint8_t *)objectsPtr + c * sizeof(void *));
       if (!chunk) continue;
       int32_t chunkStartIdx = c * elementsPerChunk;
       int32_t countInChunk = std::min(elementsPerChunk, total - chunkStartIdx);
+      if (countInChunk <= 0) continue;
       uint8_t *chunkBytes = (uint8_t *)chunk;
+
+      if (!SafeMem_IsReadable(chunkBytes,
+                              static_cast<size_t>(itemSize) * static_cast<size_t>(countInChunk)))
+        continue;
       for (int32_t i = 0; i < countInChunk; i++) {
         UObject *obj = *(UObject **)(chunkBytes + i * itemSize + objOff);
         if (!obj || (uintptr_t)obj < 0x10000 || (uintptr_t)obj >= 0x800000000000ULL) continue;
 
-        UClass *objCls = (clsOff >= 0) ? *(UClass **)((uint8_t *)obj + clsOff) : GetObjectClass(state, obj);
+        UClass *objCls = nullptr;
+        if (clsOff >= 0) {
+          if (!SafeMem_IsReadable((const uint8_t *)obj + clsOff, sizeof(void *))) continue;
+          objCls = *(UClass **)((uint8_t *)obj + clsOff);
+          if (objCls && !SafeMem_IsReadable(objCls, 0x100)) objCls = nullptr;
+        } else {
+          if (!SafeMem_IsReadable(obj, 0x30)) continue;
+          objCls = GetObjectClass(state, obj);
+        }
         if (matchesClass(objCls)) {
           results.push_back(obj);
         }

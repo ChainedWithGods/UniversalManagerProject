@@ -1609,12 +1609,41 @@ namespace Avalonium::CppMods
             return entry.View;
         }
 
+        bool TextureClassAccepted(void* texture)
+        {
+            UClass* objectClass =
+                EngineDiscovery::GetObjectClass(g_State, static_cast<UObject*>(texture));
+            if (!objectClass) return false;
+
+            static std::atomic<UClass*> texture2D{nullptr};
+            static std::atomic<UClass*> renderTarget2D{nullptr};
+            UClass* cached2D = texture2D.load(std::memory_order_relaxed);
+            if (!cached2D)
+            {
+                cached2D = FindClass(g_State, "Texture2D");
+                texture2D.store(cached2D, std::memory_order_relaxed);
+            }
+            if (cached2D &&
+                EngineDiscovery::IsStructA(g_State, reinterpret_cast<UStruct*>(objectClass),
+                                           reinterpret_cast<UStruct*>(cached2D)))
+            {
+                return true;
+            }
+            UClass* cachedTarget = renderTarget2D.load(std::memory_order_relaxed);
+            if (!cachedTarget)
+            {
+                cachedTarget = FindClass(g_State, "TextureRenderTarget2D");
+                renderTarget2D.store(cachedTarget, std::memory_order_relaxed);
+            }
+            return cachedTarget &&
+                   EngineDiscovery::IsStructA(g_State, reinterpret_cast<UStruct*>(objectClass),
+                                              reinterpret_cast<UStruct*>(cachedTarget));
+        }
+
         uint64_t ApiGetImGuiTexture(void* texture)
         {
             if (!ApiIsValidObject(texture)) return 0;
-
-            if (!ApiIsA(texture, "Texture2D") && !ApiIsA(texture, "TextureRenderTarget2D"))
-                return 0;
+            if (!TextureClassAccepted(texture)) return 0;
             if (!ApiIsPendingKill(texture)) RootTextureObject(texture);
             if (D3D12Hook_TextureBridgeReady()) return ResolveD3D12TextureView(texture);
             return ResolveD3D11TextureView(texture);

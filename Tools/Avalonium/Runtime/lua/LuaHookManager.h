@@ -84,6 +84,8 @@ public:
     bool Initialize(lua_State* L);
     void Shutdown();
 
+    uint64_t GetLastProcessEventTick() const;
+
     uint32_t RegisterHook(const std::string& functionName, int preCallbackRef, int postCallbackRef = -1);
     bool UnregisterHook(uint32_t hookId);
     bool UnregisterHookByName(const std::string& functionName);
@@ -213,7 +215,7 @@ private:
     int m_LastObjectCount = 0;
 
     std::thread m_TimerThread;
-    bool m_TimerThreadRunning = false;
+    std::atomic<bool> m_TimerThreadRunning{false};
 
     std::chrono::high_resolution_clock::time_point m_LastFrameTimestamp{};
     double m_LastFrameTimeMs = 16.666;

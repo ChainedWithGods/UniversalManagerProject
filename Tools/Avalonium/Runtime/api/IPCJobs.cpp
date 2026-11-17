@@ -1,5 +1,7 @@
 #include "IPCJobs.h"
 
+#include "../lua/LuaHookManager.h"
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -78,13 +80,21 @@ void Worker() {
             it->second.body = nullptr;
         }
 
+        const uint64_t lastPE = LuaEngine::LuaHookManager::Get().GetLastProcessEventTick();
+        const bool engineGone =
+            lastPE != 0 && GetTickCount64() - lastPE > 10000;
+
         std::string response;
-        try {
-            response = body ? body() : std::string("ERROR: empty job\n");
-        } catch (const std::exception& ex) {
-            response = std::string("ERROR: Internal exception: ") + ex.what() + "\n";
-        } catch (...) {
-            response = "ERROR: Internal exception (unknown type)\n";
+        if (engineGone) {
+            response = std::string("ERROR: engine is shutting down\n");
+        } else {
+            try {
+                response = body ? body() : std::string("ERROR: empty job\n");
+            } catch (const std::exception& ex) {
+                response = std::string("ERROR: Internal exception: ") + ex.what() + "\n";
+            } catch (...) {
+                response = "ERROR: Internal exception (unknown type)\n";
+            }
         }
 
         {

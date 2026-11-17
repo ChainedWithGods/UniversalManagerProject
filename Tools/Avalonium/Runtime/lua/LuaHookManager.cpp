@@ -1318,6 +1318,10 @@ static std::unique_lock<std::recursive_mutex> LockLuaForHandOff() {
     return lock;
 }
 
+uint64_t LuaHookManager::GetLastProcessEventTick() const {
+    return s_LastProcessEventTick.load(std::memory_order_relaxed);
+}
+
 void LuaHookManager::Shutdown() {
     m_TimerThreadRunning = false;
     if (m_TimerThread.joinable()) {
@@ -1424,6 +1428,10 @@ void LuaHookManager::PumpFallbackHeartbeat() {
     uint64_t lastPE = s_LastProcessEventTick.load(std::memory_order_relaxed);
 
     if (m_HookInstalled && lastPE != 0 && (nowTick - lastPE < 100)) {
+        return;
+    }
+
+    if (m_HookInstalled && lastPE != 0 && nowTick - lastPE > 10000) {
         return;
     }
 
