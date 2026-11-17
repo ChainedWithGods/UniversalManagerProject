@@ -34,6 +34,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -916,9 +917,16 @@ namespace Avalonium::CppMods
         struct TextureClassLayout
         {
             int32_t ImportedSizeOffset = -1;
+            int32_t SizeXOffset = -1;
+            int32_t SizeYOffset = -1;
             int32_t SrgbOffset = -1;
             uint8_t SrgbByteOffset = 0;
             uint8_t SrgbMask = 0;
+            int32_t RenderTargetFormatOffset = -1;
+            int32_t OverrideFormatOffset = -1;
+            int32_t ForceLinearGammaOffset = -1;
+            uint8_t ForceLinearGammaByteOffset = 0;
+            uint8_t ForceLinearGammaMask = 1;
             int32_t ObjectSize = 0;
         };
 
@@ -939,11 +947,31 @@ namespace Avalonium::CppMods
             PropertyRef property;
             if (FindProperty(g_State, textureClass, "ImportedSize", property))
                 layout.ImportedSizeOffset = property.Offset;
+
+            if (FindProperty(g_State, textureClass, "SizeX", property) &&
+                property.ElementSize == 4)
+                layout.SizeXOffset = property.Offset;
+            if (FindProperty(g_State, textureClass, "SizeY", property) &&
+                property.ElementSize == 4)
+                layout.SizeYOffset = property.Offset;
             if (FindProperty(g_State, textureClass, "SRGB", property))
             {
                 layout.SrgbOffset = property.Offset;
                 layout.SrgbByteOffset = property.BoolByteOffset;
                 layout.SrgbMask = property.BoolByteMask ? property.BoolByteMask : 1;
+            }
+            if (FindProperty(g_State, textureClass, "RenderTargetFormat", property) &&
+                property.ElementSize == 1)
+                layout.RenderTargetFormatOffset = property.Offset;
+            if (FindProperty(g_State, textureClass, "OverrideFormat", property) &&
+                property.ElementSize == 1)
+                layout.OverrideFormatOffset = property.Offset;
+            if (FindProperty(g_State, textureClass, "bForceLinearGamma", property))
+            {
+                layout.ForceLinearGammaOffset = property.Offset;
+                layout.ForceLinearGammaByteOffset = property.BoolByteOffset;
+                layout.ForceLinearGammaMask =
+                    property.BoolByteMask ? property.BoolByteMask : 1;
             }
             if (g_State.UStruct_PropertiesSizeOff >= 0)
             {
@@ -961,19 +989,57 @@ namespace Avalonium::CppMods
         {
             sizeX = 0;
             sizeY = 0;
-            if (!texture || layout.ImportedSizeOffset < 0) return false;
-            if (!SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.ImportedSizeOffset,
-                              &sizeX, sizeof(sizeX)) ||
-                !SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.ImportedSizeOffset + 4,
-                              &sizeY, sizeof(sizeY)))
-            {
-                return false;
-            }
-            return sizeX > 0 && sizeY > 0 && sizeX <= 32768 && sizeY <= 32768;
+            if (!texture) return false;
+            auto readPair = [&](int32_t xOffset, int32_t yOffset) {
+                int32_t x = 0;
+                int32_t y = 0;
+                if (xOffset < 0 || yOffset < 0) return false;
+                if (!SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + xOffset, &x,
+                                  sizeof(x)) ||
+                    !SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + yOffset, &y,
+                                  sizeof(y)))
+                {
+                    return false;
+                }
+                if (x <= 0 || y <= 0 || x > 32768 || y > 32768) return false;
+                sizeX = x;
+                sizeY = y;
+                return true;
+            };
+
+            if (readPair(layout.ImportedSizeOffset, layout.ImportedSizeOffset + 4)) return true;
+            return readPair(layout.SizeXOffset, layout.SizeYOffset);
         }
 
         bool TextureIsSrgb(void* texture, const TextureClassLayout& layout)
         {
+            if (texture && layout.RenderTargetFormatOffset >= 0 &&
+                layout.ForceLinearGammaOffset >= 0)
+            {
+
+                uint8_t gammaByte = 0;
+                uint8_t overrideFormat = 0;
+                uint8_t renderTargetFormat = 0;
+                if (SafeMem_Read(reinterpret_cast<uint8_t*>(texture) +
+                                     layout.ForceLinearGammaOffset +
+                                     layout.ForceLinearGammaByteOffset,
+                                 &gammaByte, sizeof(gammaByte)) &&
+                    (layout.OverrideFormatOffset < 0 ||
+                     SafeMem_Read(reinterpret_cast<uint8_t*>(texture) +
+                                      layout.OverrideFormatOffset,
+                                  &overrideFormat, sizeof(overrideFormat))) &&
+                    SafeMem_Read(reinterpret_cast<uint8_t*>(texture) +
+                                     layout.RenderTargetFormatOffset,
+                                 &renderTargetFormat, sizeof(renderTargetFormat)))
+                {
+                    const bool linearGamma = (gammaByte & layout.ForceLinearGammaMask) != 0;
+                    if (layout.OverrideFormatOffset >= 0 && overrideFormat != 0 )
+                        return !linearGamma;
+                    if (ApiGetEngineMajor() == 4 && ApiGetEngineMinor() <= 23)
+                        return !linearGamma;
+                    return renderTargetFormat == 3;
+                }
+            }
             if (!texture || layout.SrgbOffset < 0) return true;
             uint8_t byte = 0;
             if (!SafeMem_Read(reinterpret_cast<uint8_t*>(texture) + layout.SrgbOffset +
@@ -1545,10 +1611,285 @@ namespace Avalonium::CppMods
 
         uint64_t ApiGetImGuiTexture(void* texture)
         {
-            if (!ApiIsValidObject(texture) || !ApiIsA(texture, "Texture2D")) return 0;
+            if (!ApiIsValidObject(texture)) return 0;
+
+            if (!ApiIsA(texture, "Texture2D") && !ApiIsA(texture, "TextureRenderTarget2D"))
+                return 0;
             if (!ApiIsPendingKill(texture)) RootTextureObject(texture);
             if (D3D12Hook_TextureBridgeReady()) return ResolveD3D12TextureView(texture);
             return ResolveD3D11TextureView(texture);
+        }
+
+        std::wstring Utf8ToWide(const char* text)
+        {
+            if (!text || !*text) return {};
+            const int length = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+            if (length <= 1) return {};
+            std::wstring wide(static_cast<size_t>(length), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, text, -1, wide.data(), length);
+            wide.resize(static_cast<size_t>(length - 1));
+            return wide;
+        }
+
+        struct AssetLoaderState
+        {
+            UObject* StringLibrary = nullptr;
+            UFunction* StringToName = nullptr;
+            UObject* AssetLibrary = nullptr;
+            UFunction* LoadAsset = nullptr;
+            bool Ready = false;
+        };
+
+        AssetLoaderState& AssetLoader()
+        {
+            static AssetLoaderState loader;
+            return loader;
+        }
+
+        bool ResolveAssetLoader()
+        {
+            AssetLoaderState& loader = AssetLoader();
+            if (loader.Ready) return true;
+            UClass* stringClass = FindClass(g_State, "KismetStringLibrary");
+            UClass* assetClass = FindClass(g_State, "KismetSystemLibrary");
+            loader.StringLibrary =
+                stringClass ? GetClassDefaultObject(g_State, stringClass) : nullptr;
+            loader.AssetLibrary =
+                assetClass ? GetClassDefaultObject(g_State, assetClass) : nullptr;
+            loader.StringToName =
+                stringClass ? FindFunction(g_State, stringClass, "Conv_StringToName") : nullptr;
+            loader.LoadAsset =
+                assetClass ? FindFunction(g_State, assetClass, "LoadAsset_Blocking") : nullptr;
+            if (!loader.StringLibrary || !loader.AssetLibrary || !loader.StringToName ||
+                !loader.LoadAsset)
+            {
+                return false;
+            }
+            loader.Ready = true;
+            return true;
+        }
+
+        bool NameFromString(const std::wstring& text, uint8_t (&outName)[8])
+        {
+            AssetLoaderState& loader = AssetLoader();
+            int32_t frameSize = GetFunctionFrameSize(g_State, loader.StringToName);
+            if (frameSize < 0x18) frameSize = 0x18;
+            std::vector<uint8_t> frame(static_cast<size_t>((frameSize + 15) & ~15), 0);
+            const wchar_t* data = text.c_str();
+            const int32_t count = static_cast<int32_t>(text.size()) + 1;
+            std::memcpy(frame.data(), &data, sizeof(data));
+            std::memcpy(frame.data() + 0x8, &count, sizeof(count));
+            std::memcpy(frame.data() + 0xC, &count, sizeof(count));
+            if (!ProcessEvent(g_State, loader.StringLibrary, loader.StringToName, frame.data()))
+                return false;
+            std::memcpy(outName, frame.data() + 0x10, sizeof(outName));
+            uint32_t comparisonIndex = 0;
+            std::memcpy(&comparisonIndex, outName, sizeof(comparisonIndex));
+            return comparisonIndex != 0;
+        }
+
+        UObject* LoadAssetBlocking(const std::string& path)
+        {
+            if (path.empty()) return nullptr;
+            if (!ResolveAssetLoader()) return nullptr;
+            AssetLoaderState& loader = AssetLoader();
+
+            const bool hasTag = g_State.UEMajor < 5 || g_State.UEMinor <= 2;
+            const bool topLevelPair = g_State.UEMajor >= 5 && g_State.UEMinor >= 1;
+            const int32_t nameOffset = hasTag ? 0x10 : 0x8;
+            const int32_t softSize = nameOffset + (topLevelPair ? 0x20 : 0x18);
+            int32_t frameSize = GetFunctionFrameSize(g_State, loader.LoadAsset);
+            if (frameSize < softSize + 8) frameSize = softSize + 8;
+            std::vector<uint8_t> frame(static_cast<size_t>((frameSize + 15) & ~15), 0);
+
+            if (topLevelPair)
+            {
+                std::string package = path;
+                std::string assetName;
+                const size_t dot = package.rfind('.');
+                const size_t slash = package.rfind('/');
+                if (dot != std::string::npos &&
+                    (slash == std::string::npos || dot > slash))
+                {
+                    assetName = package.substr(dot + 1);
+                    package.resize(dot);
+                }
+                else if (slash != std::string::npos)
+                {
+                    assetName = package.substr(slash + 1);
+                }
+                if (package.empty() || assetName.empty()) return nullptr;
+                uint8_t packageFName[8] = {};
+                uint8_t assetFName[8] = {};
+                if (!NameFromString(Utf8ToWide(package.c_str()), packageFName) ||
+                    !NameFromString(Utf8ToWide(assetName.c_str()), assetFName))
+                {
+                    return nullptr;
+                }
+                std::memcpy(frame.data() + nameOffset, packageFName, sizeof(packageFName));
+                std::memcpy(frame.data() + nameOffset + 8, assetFName, sizeof(assetFName));
+            }
+            else
+            {
+                uint8_t pathFName[8] = {};
+                if (!NameFromString(Utf8ToWide(path.c_str()), pathFName)) return nullptr;
+                std::memcpy(frame.data() + nameOffset, pathFName, sizeof(pathFName));
+            }
+
+            if (!ProcessEvent(g_State, loader.AssetLibrary, loader.LoadAsset, frame.data()))
+                return nullptr;
+            void* result = nullptr;
+            std::memcpy(&result, frame.data() + softSize, sizeof(result));
+            if (!result) return nullptr;
+            auto* object = static_cast<UObject*>(result);
+            if (!ApiIsValidObject(object) || ApiIsPendingKill(object)) return nullptr;
+            return object;
+        }
+
+        void SetAssetRooted(UObject* object, bool rooted)
+        {
+            if (!object) return;
+            EngineDiscovery::SetInternalObjectFlags(g_State, object, kRootSetFlag, rooted);
+        }
+
+        void* ApiLoadAsset(const char* path)
+        {
+            if (!path || !*path) return nullptr;
+            if (!EnsureGameThread("load_asset")) return nullptr;
+            if (void* existing = ApiFindObject(path))
+            {
+                SetAssetRooted(static_cast<UObject*>(existing), true);
+                return existing;
+            }
+            UObject* loaded = LoadAssetBlocking(path);
+            if (loaded) SetAssetRooted(loaded, true);
+            return loaded;
+        }
+
+        void ApiReleaseAsset(void* object)
+        {
+            if (!object) return;
+            SetAssetRooted(static_cast<UObject*>(object), false);
+        }
+
+        struct AssetLoadRequest
+        {
+            std::string Path;
+            UObject* Object = nullptr;
+            bool Done = false;
+        };
+
+        struct AssetLoadQueue
+        {
+            std::mutex Mutex;
+            std::unordered_map<uint64_t, AssetLoadRequest> Requests;
+            std::deque<uint64_t> Pending;
+            std::atomic<uint64_t> NextId{1};
+            std::atomic<int32_t> Budget{1};
+        };
+
+        AssetLoadQueue& AssetQueue()
+        {
+            static AssetLoadQueue queue;
+            return queue;
+        }
+
+        uint64_t ApiEnqueueAssetLoad(const char* path)
+        {
+            if (!path || !*path) return 0;
+            AssetLoadQueue& queue = AssetQueue();
+            std::lock_guard<std::mutex> lock(queue.Mutex);
+            if (queue.Requests.size() >= 4096) return 0;
+            const uint64_t id = queue.NextId.fetch_add(1, std::memory_order_relaxed);
+            AssetLoadRequest request;
+            request.Path = path;
+            queue.Requests.emplace(id, std::move(request));
+            queue.Pending.push_back(id);
+            return id;
+        }
+
+        int32_t ApiPollAssetLoad(uint64_t request, void** outObject)
+        {
+            if (outObject) *outObject = nullptr;
+            AssetLoadQueue& queue = AssetQueue();
+            std::lock_guard<std::mutex> lock(queue.Mutex);
+            const auto found = queue.Requests.find(request);
+            if (found == queue.Requests.end()) return -1;
+            if (!found->second.Done) return 0;
+            if (!found->second.Object)
+            {
+                queue.Requests.erase(found);
+                return -1;
+            }
+            if (outObject) *outObject = found->second.Object;
+            queue.Requests.erase(found);
+            return 1;
+        }
+
+        void ApiCancelAssetLoad(uint64_t request)
+        {
+            AssetLoadQueue& queue = AssetQueue();
+            UObject* finished = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(queue.Mutex);
+                const auto found = queue.Requests.find(request);
+                if (found == queue.Requests.end()) return;
+                finished = found->second.Done ? found->second.Object : nullptr;
+                queue.Requests.erase(found);
+            }
+            if (finished) SetAssetRooted(finished, false);
+        }
+
+        int32_t ApiSetAssetLoadBudget(int32_t loadsPerFrame)
+        {
+            const int32_t clamped = std::clamp(loadsPerFrame, 0, 64);
+            AssetQueue().Budget.store(clamped, std::memory_order_relaxed);
+            return clamped;
+        }
+
+        void PumpQueuedAssetLoads()
+        {
+            AssetLoadQueue& queue = AssetQueue();
+            int32_t budget = queue.Budget.load(std::memory_order_relaxed);
+            while (budget > 0)
+            {
+                uint64_t id = 0;
+                std::string path;
+                {
+                    std::lock_guard<std::mutex> lock(queue.Mutex);
+                    while (!queue.Pending.empty())
+                    {
+                        const uint64_t next = queue.Pending.front();
+                        queue.Pending.pop_front();
+                        const auto found = queue.Requests.find(next);
+                        if (found == queue.Requests.end()) continue;
+                        id = next;
+                        path = found->second.Path;
+                        break;
+                    }
+                }
+                if (!id) return;
+                --budget;
+
+                UObject* object = nullptr;
+                if (void* existing = ApiFindObject(path.c_str()))
+                    object = static_cast<UObject*>(existing);
+                else
+                    object = LoadAssetBlocking(path);
+                if (object) SetAssetRooted(object, true);
+                {
+                    std::lock_guard<std::mutex> lock(queue.Mutex);
+                    const auto found = queue.Requests.find(id);
+                    if (found == queue.Requests.end())
+                    {
+
+                        if (object) SetAssetRooted(object, false);
+                        continue;
+                    }
+                    found->second.Object = object;
+                    found->second.Done = true;
+                }
+            }
         }
 
         void* ApiGetDataTableRow(void* dataTable, const char* rowName)
@@ -1622,6 +1963,11 @@ namespace Avalonium::CppMods
             }
             return nullptr;
         }
+    }
+
+    void PumpAssetLoads()
+    {
+        PumpQueuedAssetLoads();
     }
 
     const AvaloniumModApi g_Api = {
@@ -1714,6 +2060,12 @@ namespace Avalonium::CppMods
         &ApiRegisterHookVeto,
         &ApiRegisterAddressVeto,
         &ApiIsModAsset,
+        &ApiLoadAsset,
+        &ApiReleaseAsset,
+        &ApiEnqueueAssetLoad,
+        &ApiPollAssetLoad,
+        &ApiCancelAssetLoad,
+        &ApiSetAssetLoadBudget,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

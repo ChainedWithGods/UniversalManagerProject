@@ -1,5 +1,6 @@
 ﻿#include "CppModManager.h"
 
+#include "CppModAssets.h"
 #include "CppModContext.h"
 #include "CppModHooks.h"
 #include "CppModImGui.h"
@@ -399,6 +400,8 @@ namespace Avalonium::CppMods
         if (!m_LifecycleFired.load(std::memory_order_acquire)) FireLifecycle();
 
         DrainTasks();
+
+        PumpAssetLoads();
 
         for (const std::unique_ptr<LoadedMod>& mod : m_Mods)
         {

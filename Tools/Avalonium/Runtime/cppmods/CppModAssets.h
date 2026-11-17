@@ -6,4 +6,6 @@ namespace Avalonium::CppMods
 {
 
     bool IsModAsset(EngineState& state, UObject* object);
+
+    void PumpAssetLoads();
 }
