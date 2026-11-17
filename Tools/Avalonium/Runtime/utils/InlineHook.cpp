@@ -1,4 +1,5 @@
 #include "InlineHook.h"
+#include "SafeMemory.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -39,6 +40,17 @@ void WriteJump(uint8_t* at, const void* destination) {
     at[4] = 0x00;
     at[5] = 0x00;
     std::memcpy(at + 6, &destination, sizeof(destination));
+}
+
+constexpr size_t kSlotJumpBytes = 6;
+
+void WriteSlotJump(uint8_t* at, uintptr_t slotAddress) {
+    const int64_t displacement =
+        static_cast<int64_t>(slotAddress) - static_cast<int64_t>(reinterpret_cast<uintptr_t>(at) + kSlotJumpBytes);
+    const auto narrow = static_cast<int32_t>(displacement);
+    at[0] = 0xFF;
+    at[1] = 0x25;
+    std::memcpy(at + 2, &narrow, sizeof(narrow));
 }
 
 void WriteCall(uint8_t* at, const void* destination) {
@@ -295,6 +307,179 @@ void* ReserveNear(uintptr_t target, size_t size, uintptr_t low, uintptr_t high, 
     return nullptr;
 }
 
+bool IsExecutableAddress(uintptr_t address) {
+    if (address < 0x10000ULL || address > 0x00007FFFFFFEFFFFULL) return false;
+
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (VirtualQuery(reinterpret_cast<void*>(address), &mbi, sizeof(mbi)) != sizeof(mbi)) return false;
+    if (mbi.State != MEM_COMMIT) return false;
+
+    const DWORD protection = mbi.Protect & 0xFF;
+    return protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ ||
+           protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
+}
+
+bool IsInsideLoadedModule(uintptr_t address) {
+    HMODULE module = nullptr;
+    return GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                  GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              reinterpret_cast<LPCSTR>(address), &module) != FALSE && module != nullptr;
+}
+
+constexpr int kMaxForwarderHops = 8;
+
+enum class EntryShape {
+    Body,
+    Follow,
+    Chain
+};
+
+struct EntryResolution {
+    EntryShape Shape = EntryShape::Body;
+    uintptr_t Body = 0;
+    int Hops = 0;
+
+    uintptr_t ChainDetour = 0;
+    size_t ChainJumpLength = 0;
+    std::string Note;
+};
+
+bool ResolveEntry(uintptr_t entry, EntryResolution* out) {
+    uintptr_t current = entry;
+    int hops = 0;
+
+    for (;;) {
+        uint8_t code[6] = {};
+        if (!SafeMem_Read(reinterpret_cast<const void*>(current), code, sizeof(code))) {
+            char text[192];
+            std::snprintf(text, sizeof(text),
+                          "the bytes at %p could not be read, so what the entry runs cannot be "
+                          "determined",
+                          reinterpret_cast<void*>(current));
+            out->Note = text;
+            return false;
+        }
+
+        const bool isSlotJump = code[0] == 0xFF && code[1] == 0x25;
+        const bool isNearJump = code[0] == 0xE9;
+        const bool isShortJump = code[0] == 0xEB;
+        if (!isSlotJump && !isNearJump && !isShortJump) {
+            out->Shape = hops > 0 ? EntryShape::Follow : EntryShape::Body;
+            out->Body = current;
+            out->Hops = hops;
+            return true;
+        }
+
+        uintptr_t next = 0;
+        size_t jumpLength = 0;
+        const char* form = isSlotJump ? "FF 25" : (isNearJump ? "E9" : "EB");
+
+        bool isHookPatch = false;
+
+        if (isSlotJump) {
+
+            int32_t displacement = 0;
+            std::memcpy(&displacement, code + 2, sizeof(displacement));
+            const uintptr_t slot = current + 6 + static_cast<uintptr_t>(static_cast<intptr_t>(displacement));
+            jumpLength = (displacement == 0) ? 14 : 6;
+
+            void* destination = nullptr;
+            if (!SafeMem_Read(reinterpret_cast<const void*>(slot), &destination, sizeof(destination)) ||
+                !destination) {
+                char text[192];
+                std::snprintf(text, sizeof(text),
+                              "the forwarder at %p reads its destination from %p, which holds no "
+                              "pointer, so what the entry runs cannot be determined",
+                              reinterpret_cast<void*>(current), reinterpret_cast<void*>(slot));
+                out->Note = text;
+                return false;
+            }
+            next = reinterpret_cast<uintptr_t>(destination);
+
+            isHookPatch = !IsInsideLoadedModule(slot);
+        } else if (isNearJump) {
+            jumpLength = 5;
+            int32_t displacement = 0;
+            std::memcpy(&displacement, code + 1, sizeof(displacement));
+            next = current + 5 + static_cast<uintptr_t>(static_cast<intptr_t>(displacement));
+            isHookPatch = !IsInsideLoadedModule(next);
+        } else {
+            jumpLength = 2;
+            next = current + 2 + static_cast<uintptr_t>(static_cast<intptr_t>(static_cast<int8_t>(code[1])));
+            isHookPatch = !IsInsideLoadedModule(next);
+        }
+
+        if (next == current) {
+            char text[192];
+            std::snprintf(text, sizeof(text), "the forwarder at %p (%s) jumps to itself",
+                          reinterpret_cast<void*>(current), form);
+            out->Note = text;
+            return false;
+        }
+        if (!IsExecutableAddress(next)) {
+            char text[192];
+            std::snprintf(text, sizeof(text),
+                          "the forwarder at %p (%s) names %p, which is not executable memory",
+                          reinterpret_cast<void*>(current), form, reinterpret_cast<void*>(next));
+            out->Note = text;
+            return false;
+        }
+
+        if (isHookPatch) {
+
+            out->Shape = EntryShape::Chain;
+            out->Body = current;
+            out->Hops = hops;
+            out->ChainDetour = next;
+            out->ChainJumpLength = jumpLength;
+            return true;
+        }
+
+        if (hops >= kMaxForwarderHops) {
+            char text[192];
+            std::snprintf(text, sizeof(text),
+                          "the entry is still a jump after %d forwarder(s), so the chain is a loop "
+                          "rather than a way to a body",
+                          hops);
+            out->Note = text;
+            return false;
+        }
+
+        current = next;
+        ++hops;
+    }
+}
+
+void DescribeAddressOwner(uintptr_t address, char* out, size_t capacity) {
+    HMODULE module = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(address), &module) &&
+        module) {
+        char path[MAX_PATH] = {};
+        const DWORD length = GetModuleFileNameA(module, path, MAX_PATH);
+        if (length > 0) {
+            const char* name = path;
+            for (DWORD i = 0; i < length; ++i) {
+                if (path[i] == '\\' || path[i] == '/') name = path + i + 1;
+            }
+            std::snprintf(out, capacity, "%s", name);
+            return;
+        }
+    }
+
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (VirtualQuery(reinterpret_cast<void*>(address), &mbi, sizeof(mbi)) != sizeof(mbi)) {
+        std::snprintf(out, capacity, "an address no module owns");
+        return;
+    }
+    if (mbi.Type == MEM_MAPPED) {
+        std::snprintf(out, capacity, "a mapped view at %p", mbi.AllocationBase);
+        return;
+    }
+    std::snprintf(out, capacity, "an allocation at %p", mbi.AllocationBase);
+}
+
 }
 
 InlineHook::~InlineHook() {
@@ -311,8 +496,79 @@ bool InlineHook::Install(void* target, void* detour, void** originalOut, std::st
     if (!target || !detour) return fail("no target or detour");
 
     m_PlacementNotes.clear();
+    m_Entry = nullptr;
+    m_ForwarderHops = 0;
 
-    uint8_t* const start = static_cast<uint8_t*>(target);
+    EntryResolution entry;
+    const uintptr_t entryAddress = reinterpret_cast<uintptr_t>(target);
+    if (!ResolveEntry(entryAddress, &entry)) {
+        return fail(entry.Note.empty() ? "what the entry runs could not be determined"
+                                       : entry.Note.c_str());
+    }
+
+    if (entry.Shape == EntryShape::Chain) {
+        if (entry.ChainJumpLength != kSlotJumpBytes) {
+            char text[224];
+            std::snprintf(text, sizeof(text),
+                          "the entry %p carries another hook's %zu-byte jump, and only a %zu-byte "
+                          "jump can be written over it without displacing anything",
+                          reinterpret_cast<void*>(entryAddress), entry.ChainJumpLength,
+                          kSlotJumpBytes);
+            return fail(text);
+        }
+
+        uint8_t* slotPage = static_cast<uint8_t*>(
+            ReserveNear(entryAddress, 0x1000, entryAddress > kSearchRange ? entryAddress - kSearchRange : 0,
+                        entryAddress + kSearchRange, nullptr));
+        if (!slotPage) return fail("no free page within reach of the entry for the jump's slot");
+
+        void* const destination = detour;
+        std::memcpy(slotPage, &destination, sizeof(destination));
+
+        uint8_t* const start = reinterpret_cast<uint8_t*>(entryAddress);
+
+        std::memcpy(m_Saved, start, kSlotJumpBytes);
+
+        DWORD previous = 0;
+        if (!VirtualProtect(start, kSlotJumpBytes, PAGE_EXECUTE_READWRITE, &previous)) {
+            VirtualFree(slotPage, 0, MEM_RELEASE);
+            return fail("VirtualProtect failed on the entry");
+        }
+
+        if (originalOut) *originalOut = reinterpret_cast<void*>(entry.ChainDetour);
+        m_Trampoline = reinterpret_cast<void*>(entry.ChainDetour);
+
+        int strandedMoved = 0;
+        {
+            ThreadFreeze freeze(start, kSlotJumpBytes, nullptr, nullptr);
+            WriteSlotJump(start, reinterpret_cast<uintptr_t>(slotPage));
+            strandedMoved = freeze.StrandedMoved();
+        }
+
+        VirtualProtect(start, kSlotJumpBytes, previous, &previous);
+        FlushInstructionCache(GetCurrentProcess(), start, kSlotJumpBytes);
+
+        m_Target = start;
+        m_Entry = reinterpret_cast<void*>(entryAddress);
+        m_ForwarderHops = entry.Hops;
+        m_Chained = true;
+        m_Detour = detour;
+        m_StolenBytes = kSlotJumpBytes;
+        m_Installed = true;
+
+        char summary[512];
+        const int written = std::snprintf(
+            summary, sizeof(summary),
+            "took over an entry another hook already owns: wrote a %zu-byte jump over its own at %p "
+            "(slot %p), and Original() is that hook's detour at %p, so a call runs this hook first "
+            "and then that one; no byte of its displaced region was touched; threads moved: %d",
+            kSlotJumpBytes, reinterpret_cast<void*>(entryAddress), static_cast<void*>(slotPage),
+            reinterpret_cast<void*>(entry.ChainDetour), strandedMoved);
+        m_Summary.assign(summary, written > 0 ? static_cast<size_t>(written) : 0);
+        return true;
+    }
+
+    uint8_t* const start = reinterpret_cast<uint8_t*>(entry.Body);
     const uintptr_t base = reinterpret_cast<uintptr_t>(start);
 
     std::vector<Instruction> instructions;
@@ -571,39 +827,59 @@ bool InlineHook::Install(void* target, void* detour, void** originalOut, std::st
     VirtualProtect(start, kJumpBytes, previous, &previous);
     FlushInstructionCache(GetCurrentProcess(), start, kJumpBytes);
 
-    m_Target = target;
+    m_Target = start;
+    m_Entry = reinterpret_cast<void*>(entryAddress);
+    m_ForwarderHops = entry.Hops;
+    m_Chained = entry.Shape == EntryShape::Chain;
     m_Detour = detour;
     m_StolenBytes = oldLength;
     m_Installed = true;
 
     const uintptr_t trampolineAddress = reinterpret_cast<uintptr_t>(trampoline);
     const uintptr_t distance = trampolineAddress > base ? trampolineAddress - base : base - trampolineAddress;
-    char summary[320];
-    std::snprintf(summary, sizeof(summary),
+    char summary[512];
+    const int written = std::snprintf(summary, sizeof(summary),
                   "displaced %zu byte(s) in %zu instruction(s), %zu re-addressed, %zu carried on a "
                   "register; trampoline %p (0x%llX from the target, reach beyond 2GB would corrupt: "
                   "%s); threads moved: %d",
                   oldLength, instructions.size(), reAddressed, carriedInRegister, trampoline,
                   static_cast<unsigned long long>(distance),
                   needsReach ? "required, and satisfied" : "not required", strandedMoved);
-    m_Summary = summary;
+    m_Summary.assign(summary, written > 0 ? static_cast<size_t>(written) : 0);
+
+    if (entry.Shape == EntryShape::Follow) {
+        char owner[96] = {};
+        DescribeAddressOwner(reinterpret_cast<uintptr_t>(start), owner, sizeof(owner));
+        char forwarded[384];
+        std::snprintf(forwarded, sizeof(forwarded),
+                      "; the entry %p is a forwarder, followed %d hop(s) to the body at %p (%s), which "
+                      "is what was patched - calls arriving through the entry still land on it",
+                      reinterpret_cast<void*>(entryAddress), entry.Hops,
+                      static_cast<void*>(start), owner);
+        m_Summary += forwarded;
+    }
     return true;
 }
 
 void InlineHook::Remove() {
     if (!m_Installed || !m_Target) return;
 
+    const size_t patchBytes = m_Chained ? kSlotJumpBytes : kJumpBytes;
+
     DWORD previous = 0;
-    if (VirtualProtect(m_Target, kJumpBytes, PAGE_EXECUTE_READWRITE, &previous)) {
+    if (VirtualProtect(m_Target, patchBytes, PAGE_EXECUTE_READWRITE, &previous)) {
         {
-            ThreadFreeze freeze(m_Target, kJumpBytes, nullptr, nullptr);
-            std::memcpy(m_Target, m_Saved, kJumpBytes);
+            ThreadFreeze freeze(m_Target, patchBytes, nullptr, nullptr);
+            std::memcpy(m_Target, m_Saved, patchBytes);
         }
-        VirtualProtect(m_Target, kJumpBytes, previous, &previous);
-        FlushInstructionCache(GetCurrentProcess(), m_Target, kJumpBytes);
+        VirtualProtect(m_Target, patchBytes, previous, &previous);
+        FlushInstructionCache(GetCurrentProcess(), m_Target, patchBytes);
     }
 
     m_Target = nullptr;
+    m_Entry = nullptr;
+    m_ForwarderHops = 0;
+    m_Chained = false;
     m_Detour = nullptr;
     m_Trampoline = nullptr;
     m_StolenBytes = 0;
