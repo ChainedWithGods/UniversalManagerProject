@@ -1,7 +1,7 @@
 # UsmapAPI: `.usmap` Generator
 
 The UsmapAPI subsystem writes the engine's reflection data into the **`.usmap` mapping file**
-format used by the UE modding ecosystem (UnrealMappingsDump, FModel, UAssetAPI, …). A `.usmap`
+format used by the UE modding ecosystem (FModel, PakViewer). A `.usmap`
 contains the name table, enums, structs/classes, property schemas and, in Avalonium's output,
 an extended CEXT block with property offsets, package paths, default objects, interfaces,
 function signatures and bytecode.
