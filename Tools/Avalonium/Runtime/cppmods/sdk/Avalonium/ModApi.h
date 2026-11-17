@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define AVALONIUM_MOD_API_VERSION 17u
+#define AVALONIUM_MOD_API_VERSION 18u
 #define AVALONIUM_MOD_API_MIN_VERSION 1u
 
 #define AVALONIUM_MOD_ABI_VERSION 1u
@@ -91,6 +91,8 @@ typedef void (*AvaloniumKeyCallback)(void* user_data);
 typedef void (*AvaloniumTaskCallback)(void* user_data);
 
 typedef void (*AvaloniumWidgetCallback)(void* user_data);
+
+typedef void (*AvaloniumWidgetEventCallback)(void* user_data, void* function, void* frame);
 
 typedef void (*AvaloniumImGuiCallback)(void* user_data);
 
@@ -242,6 +244,13 @@ typedef struct AvaloniumModApi
     int32_t (*poll_asset_load)(uint64_t request, void** out_object);
     void (*cancel_asset_load)(uint64_t request);
     int32_t (*set_asset_load_budget)(int32_t loads_per_frame);
+
+    uint32_t (*bind_widget_event_with_args)(void* widget, const char* event_name,
+                                            AvaloniumWidgetEventCallback callback,
+                                            void* user_data);
+
+    int32_t (*get_delegate_arguments)(void* signature, AvaloniumPropertyInfo* out_properties,
+                                      int32_t max_properties);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);

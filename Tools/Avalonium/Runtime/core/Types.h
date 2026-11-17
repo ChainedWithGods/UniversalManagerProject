@@ -258,6 +258,9 @@ struct EngineState {
     int32_t FBoolProperty_BaseOff = -1;
     int32_t FClassProperty_MetaClassOff = -1;
 
+    int32_t FDelegateProperty_SignatureOff = -1;
+    int32_t FMulticastDelegateProperty_SignatureOff = -1;
+
     int32_t UEnum_NamesOff = -1;
     int32_t UEnum_EnumFlagsOff = -1;
     int32_t UClass_ClassFlagsOff = -1;

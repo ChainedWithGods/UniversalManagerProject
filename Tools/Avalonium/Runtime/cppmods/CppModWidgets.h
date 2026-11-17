@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Types.h"
+#include "sdk/Avalonium/ModApi.h"
 
 #include <cstdint>
 #include <string>
@@ -16,6 +17,8 @@ namespace Avalonium::CppMods::Widgets
         int32_t ElementSize = 0;
         int32_t Stride = 0;
         bool Multicast = false;
+
+        void* Signature = nullptr;
         std::string Name;
         std::string TypeName;
     };
@@ -35,6 +38,12 @@ namespace Avalonium::CppMods::Widgets
 
     bool FindDelegate(EngineState& state, void* object, const char* eventName,
                       DelegateInfo& out, std::string* why);
+
+    void* ReadDelegateSignature(EngineState& state, void* property,
+                                const std::string& typeName);
+
+    int32_t GetSignatureParameters(EngineState& state, void* signature,
+                                   AvaloniumPropertyInfo* out, int32_t max);
 
     bool PickDispatchFunction(EngineState& state, void* object,
                               const std::vector<uint32_t>& usedNameIndices,

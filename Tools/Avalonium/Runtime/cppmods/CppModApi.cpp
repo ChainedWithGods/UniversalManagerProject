@@ -607,6 +607,23 @@ namespace Avalonium::CppMods
             return CppModManager::Get().BindWidgetEvent(widget, eventName, callback, userData);
         }
 
+        uint32_t ApiBindWidgetEventWithArgs(void* widget, const char* eventName,
+                                            AvaloniumWidgetEventCallback callback,
+                                            void* userData)
+        {
+            if (!widget || !eventName || !callback) return 0;
+            return CppModManager::Get().BindWidgetEventWithArgs(widget, eventName, callback,
+                                                                userData);
+        }
+
+        int32_t ApiGetDelegateArguments(void* signature, AvaloniumPropertyInfo* outProperties,
+                                        int32_t maxProperties)
+        {
+            if (!signature || !outProperties || maxProperties <= 0) return 0;
+            return Widgets::GetSignatureParameters(g_State, signature, outProperties,
+                                                   maxProperties);
+        }
+
         int32_t ApiArrayLength(void* object, const char* propertyName)
         {
             if (!object || !propertyName) return -1;
@@ -2095,6 +2112,8 @@ namespace Avalonium::CppMods
         &ApiPollAssetLoad,
         &ApiCancelAssetLoad,
         &ApiSetAssetLoadBudget,
+        &ApiBindWidgetEventWithArgs,
+        &ApiGetDelegateArguments,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

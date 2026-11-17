@@ -1,6 +1,7 @@
 #include "ObjectUtils.h"
 #include "NameResolution.h"
 #include "ObjectArray.h"
+#include "FunctionFinder.h"
 #include "Logger.h"
 #include "../utils/SafeMemory.h"
 #include <cstddef>
@@ -404,6 +405,24 @@ void DiscoverFPropertyOffsetInternal(EngineState &state) {
                 Log("[Discovery] Found FObjectProperty::PropertyClass at 0x%X (-> %s)", off, cName.c_str());
                 break;
               }
+            }
+          }
+
+          if ((typeName == "DelegateProperty" || typeName == "MulticastDelegateProperty" ||
+               typeName == "MulticastInlineDelegateProperty" ||
+               typeName == "MulticastSparseDelegateProperty") &&
+              state.FDelegateProperty_SignatureOff < 0 && state.UFunctionClass) {
+
+            for (int off = currentBase; off <= 0x98; off += 8) {
+              void* sigPtr = *(void**)(propBuf + off);
+              if (!sigPtr || (uintptr_t)sigPtr < 0x10000 || (uintptr_t)sigPtr >= 0x7FFFFFFFFFFFULL) continue;
+              UClass* sigCls = EngineDiscovery::GetObjectClass(state, (UObject*)sigPtr);
+              if (!sigCls) continue;
+              if (!EngineDiscovery::IsStructA(state, (UStruct*)sigCls, (UStruct*)state.UFunctionClass)) continue;
+              state.FDelegateProperty_SignatureOff = off;
+              std::string sigName = EngineDiscovery::GetObjectNameStr(state, (UObject*)sigPtr);
+              Log("[Discovery] Found delegate SignatureFunction at 0x%X (-> %s)", off, sigName.c_str());
+              break;
             }
           }
 

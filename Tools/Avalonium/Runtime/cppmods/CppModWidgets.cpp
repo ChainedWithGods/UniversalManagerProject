@@ -205,10 +205,39 @@ namespace Avalonium::CppMods::Widgets
         return nullptr;
     }
 
+    void* ReadDelegateSignature(EngineState& state, void* property, const std::string& typeName)
+    {
+        if (!property) return nullptr;
+        int32_t offset = state.FDelegateProperty_SignatureOff;
+        if (offset < 0) return nullptr;
+        void* signature = nullptr;
+        if (!SafeMem_Read(reinterpret_cast<uint8_t*>(property) + offset, &signature,
+                          sizeof(signature)))
+        {
+            return nullptr;
+        }
+        if (!signature || (uintptr_t)signature < 0x10000 ||
+            (uintptr_t)signature >= 0x7FFFFFFFFFFFULL)
+        {
+            return nullptr;
+        }
+        if (state.UFunctionClass)
+        {
+            UClass* signatureClass = EngineDiscovery::GetObjectClass(state,
+                                                                    static_cast<UObject*>(signature));
+            if (!signatureClass ||
+                !EngineDiscovery::IsStructA(state, reinterpret_cast<UStruct*>(signatureClass),
+                                            reinterpret_cast<UStruct*>(state.UFunctionClass)))
+            {
+                return nullptr;
+            }
+        }
+        return signature;
+    }
+
     bool FindDelegate(EngineState& state, void* objectPointer, const char* eventName,
                       DelegateInfo& out, std::string* why)
-    {
-        auto* object = static_cast<UObject*>(objectPointer);
+    {        auto* object = static_cast<UObject*>(objectPointer);
         out = DelegateInfo{};
         if (!object)
         {
@@ -280,6 +309,7 @@ namespace Avalonium::CppMods::Widgets
         out.Multicast = multicast;
         out.Name = eventName;
         out.TypeName = property.TypeName;
+        out.Signature = ReadDelegateSignature(state, property.Property, property.TypeName);
         return true;
     }
 
@@ -611,5 +641,32 @@ namespace Avalonium::CppMods::Widgets
 
         if (original.Bytes.empty()) return false;
         return SafeMem_Write(value, original.Bytes.data(), original.Bytes.size());
+    }
+
+    int32_t GetSignatureParameters(EngineState& state, void* signature,
+                                   AvaloniumPropertyInfo* out, int32_t max)
+    {
+        if (!signature || !out || max <= 0) return 0;
+        int32_t written = 0;
+        for (void* child = EngineDiscovery::GetChildrenHead(state, signature);
+             child && written < max; child = EngineDiscovery::GetFieldNext(state, child))
+        {
+            auto* field = static_cast<UObject*>(child);
+            UClass* fieldClass = EngineDiscovery::GetObjectClass(state, field);
+            if (!fieldClass) continue;
+
+            AvaloniumPropertyInfo& info = out[written];
+            std::memset(&info, 0, sizeof(info));
+            const std::string name = EngineDiscovery::GetObjectNameStr(state, field);
+            const std::string typeName = EngineDiscovery::GetObjectNameStr(state, fieldClass);
+            std::snprintf(info.name, sizeof(info.name), "%s", name.c_str());
+            std::snprintf(info.type_name, sizeof(info.type_name), "%s", typeName.c_str());
+            info.offset = -1;
+            info.element_size = 0;
+            info.array_dim = 1;
+            info.flags = 0;
+            ++written;
+        }
+        return written;
     }
 }

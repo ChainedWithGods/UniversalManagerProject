@@ -148,6 +148,27 @@ namespace RC::Widgets
         return BindEvent(widget, "OnClicked", callback, userData);
     }
 
+    inline uint32_t BindEventWithArgs(Unreal::UObject* widget, std::string_view eventName,
+                                      AvaloniumWidgetEventCallback callback,
+                                      void* userData = nullptr)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->bind_widget_event_with_args || !widget || !callback ||
+            eventName.empty())
+            return 0;
+        return api->bind_widget_event_with_args(Unreal::UObject::AddressOf(widget),
+                                                std::string(eventName).c_str(), callback,
+                                                userData);
+    }
+
+    inline int32_t GetDelegateArguments(void* signature, AvaloniumPropertyInfo* out,
+                                        int32_t max)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->get_delegate_arguments || !signature || !out || max <= 0) return 0;
+        return api->get_delegate_arguments(signature, out, max);
+    }
+
     inline bool Unbind(uint32_t bindingId)
     {
         const AvaloniumModApi* api = Avalonium::Detail::Api();

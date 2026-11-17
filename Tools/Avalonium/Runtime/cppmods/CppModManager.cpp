@@ -631,7 +631,22 @@ namespace Avalonium::CppMods
     uint32_t CppModManager::BindWidgetEvent(void* widget, const char* eventName,
                                             AvaloniumWidgetCallback callback, void* userData)
     {
-        if (!widget || !eventName || !*eventName || !callback ||
+        return BindWidgetEventInternal(widget, eventName, callback, nullptr, userData);
+    }
+
+    uint32_t CppModManager::BindWidgetEventWithArgs(void* widget, const char* eventName,
+                                                    AvaloniumWidgetEventCallback callback,
+                                                    void* userData)
+    {
+        return BindWidgetEventInternal(widget, eventName, nullptr, callback, userData);
+    }
+
+    uint32_t CppModManager::BindWidgetEventInternal(void* widget, const char* eventName,
+                                                    AvaloniumWidgetCallback callback,
+                                                    AvaloniumWidgetEventCallback eventCallback,
+                                                    void* userData)
+    {
+        if (!widget || !eventName || !*eventName || (!callback && !eventCallback) ||
             !m_Running.load(std::memory_order_acquire))
         {
             return 0;
@@ -717,6 +732,7 @@ namespace Avalonium::CppMods
             created->EventName = eventName;
             created->Dispatch = dispatch;
             created->DispatchNameIndex = dispatchName;
+            created->Signature = delegate.Signature;
 
             const bool attached =
                 delegate.Multicast
@@ -738,6 +754,7 @@ namespace Avalonium::CppMods
         record->Owner = owner;
         record->Attachment = attachment;
         record->Callback = callback;
+        record->EventCallback = eventCallback;
         record->User = userData;
 
         const uint32_t id = m_NextWidgetClickId.fetch_add(1, std::memory_order_relaxed);
@@ -822,8 +839,10 @@ namespace Avalonium::CppMods
         struct PendingCallback
         {
             AvaloniumWidgetCallback Callback = nullptr;
+            AvaloniumWidgetEventCallback EventCallback = nullptr;
             void* User = nullptr;
             void* Owner = nullptr;
+            void* Signature = nullptr;
         };
 
         std::vector<PendingCallback> callbacks;
@@ -864,7 +883,8 @@ namespace Avalonium::CppMods
                     const std::unique_ptr<WidgetClickRecord>& record = binding.second;
                     if (!record || record->Attachment != attachment) continue;
                     if (!record->Active.load(std::memory_order_acquire)) continue;
-                    callbacks.push_back({record->Callback, record->User, record->Owner});
+                    callbacks.push_back({record->Callback, record->EventCallback, record->User,
+                                         record->Owner, attachment->Signature});
                 }
 
                 if (!attachment->Multicast && attachment->Original.Bound())
@@ -912,7 +932,15 @@ namespace Avalonium::CppMods
             ModContextScope scope(pending.Owner);
             try
             {
-                pending.Callback(pending.User);
+                if (pending.EventCallback)
+                {
+
+                    pending.EventCallback(pending.User, pending.Signature, params);
+                }
+                else
+                {
+                    pending.Callback(pending.User);
+                }
             }
             catch (const std::exception& e)
             {

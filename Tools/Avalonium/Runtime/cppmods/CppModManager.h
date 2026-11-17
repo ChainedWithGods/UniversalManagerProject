@@ -60,6 +60,9 @@ namespace Avalonium::CppMods
         uint32_t BindWidgetClick(void* widget, AvaloniumWidgetCallback callback, void* userData);
         uint32_t BindWidgetEvent(void* widget, const char* eventName,
                                  AvaloniumWidgetCallback callback, void* userData);
+        uint32_t BindWidgetEventWithArgs(void* widget, const char* eventName,
+                                         AvaloniumWidgetEventCallback callback,
+                                         void* userData);
         bool UnbindWidgetClick(uint32_t bindingId);
 
       private:
@@ -96,6 +99,8 @@ namespace Avalonium::CppMods
             std::string EventName;
             void* Dispatch = nullptr;
             uint32_t DispatchNameIndex = 0;
+
+            void* Signature = nullptr;
             Widgets::ScriptDelegateValue Original;
             uint32_t ActiveBindings = 0;
         };
@@ -105,12 +110,17 @@ namespace Avalonium::CppMods
             void* Owner = nullptr;
             WidgetDelegateAttachment* Attachment = nullptr;
             AvaloniumWidgetCallback Callback = nullptr;
+            AvaloniumWidgetEventCallback EventCallback = nullptr;
             void* User = nullptr;
             std::atomic<bool> Active{true};
         };
 
-        static void FrameSinkThunk(void* user);
-        static void KeyBindThunk(void* user);
+        uint32_t BindWidgetEventInternal(void* widget, const char* eventName,
+                                         AvaloniumWidgetCallback callback,
+                                         AvaloniumWidgetEventCallback eventCallback,
+                                         void* userData);
+
+        static void FrameSinkThunk(void* user);        static void KeyBindThunk(void* user);
         static void ProcessEventSinkThunk(void* object, void* function, void* params);
 
         void OnGameThreadFrame();
