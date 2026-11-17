@@ -22,7 +22,14 @@ public:
 
     bool Installed() const { return m_Installed; }
     void* Original() const { return m_Trampoline; }
+
     void* Target() const { return m_Target; }
+
+    void* Entry() const { return m_Entry; }
+
+    int ForwarderHops() const { return m_ForwarderHops; }
+
+    bool Chained() const { return m_Chained; }
     void* Detour() const { return m_Detour; }
     size_t StolenBytes() const { return m_StolenBytes; }
 
@@ -32,6 +39,9 @@ public:
 
 private:
     void* m_Target = nullptr;
+    void* m_Entry = nullptr;
+    int m_ForwarderHops = 0;
+    bool m_Chained = false;
     void* m_Detour = nullptr;
     void* m_Trampoline = nullptr;
     uint8_t m_Saved[kInlineHookPatchBytes] = {};
