@@ -44,13 +44,41 @@ void WriteJump(uint8_t* at, const void* destination) {
 
 constexpr size_t kSlotJumpBytes = 6;
 
-void WriteSlotJump(uint8_t* at, uintptr_t slotAddress) {
-    const int64_t displacement =
-        static_cast<int64_t>(slotAddress) - static_cast<int64_t>(reinterpret_cast<uintptr_t>(at) + kSlotJumpBytes);
-    const auto narrow = static_cast<int32_t>(displacement);
-    at[0] = 0xFF;
-    at[1] = 0x25;
-    std::memcpy(at + 2, &narrow, sizeof(narrow));
+struct SlotExchangeResult {
+    bool Accessible = false;
+    bool Exchanged = false;
+    DWORD ProtectionError = 0;
+};
+
+SlotExchangeResult ExchangeSlotPointer(void** slot, void* expected, void* replacement) {
+    SlotExchangeResult result;
+    MEMORY_BASIC_INFORMATION info = {};
+    if (VirtualQuery(slot, &info, sizeof(info)) != sizeof(info) || info.State != MEM_COMMIT ||
+        (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+        return result;
+    }
+
+    const bool writable = (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY |
+                                          PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+    const bool executable = (info.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ |
+                                            PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+    DWORD previous = 0;
+    if (!writable && !VirtualProtect(slot, sizeof(void*),
+                                     executable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE, &previous)) {
+        return result;
+    }
+
+    __try {
+        result.Exchanged = InterlockedCompareExchangePointer(slot, replacement, expected) == expected;
+        result.Accessible = true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+
+    DWORD ignored = 0;
+    if (!writable && !VirtualProtect(slot, sizeof(void*), previous, &ignored)) {
+        result.ProtectionError = GetLastError();
+    }
+    return result;
 }
 
 void WriteCall(uint8_t* at, const void* destination) {
@@ -179,7 +207,6 @@ public:
     explicit ThreadFreeze(const void* patchAt, size_t patchSize, const void* movedTo,
                           const std::vector<Instruction>* copiedFrom) {
         const DWORD self = GetCurrentThreadId();
-        std::vector<DWORD> others;
 
         HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
         if (snapshot != INVALID_HANDLE_VALUE) {
@@ -189,15 +216,15 @@ public:
                 do {
                     if (entry.th32OwnerProcessID == GetCurrentProcessId() &&
                         entry.th32ThreadID != self) {
-                        others.push_back(entry.th32ThreadID);
+                        m_ThreadIds.push_back(entry.th32ThreadID);
                     }
                 } while (Thread32Next(snapshot, &entry));
             }
             CloseHandle(snapshot);
         }
 
-        m_Threads.reserve(others.size());
-        for (DWORD id : others) {
+        m_Threads.reserve(m_ThreadIds.size());
+        for (DWORD id : m_ThreadIds) {
             HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
                                        FALSE, id);
             if (!thread) continue;
@@ -263,6 +290,7 @@ private:
 #endif
     }
 
+    std::vector<DWORD> m_ThreadIds;
     std::vector<HANDLE> m_Threads;
     int m_StrandedMoved = 0;
 };
@@ -340,6 +368,8 @@ struct EntryResolution {
     int Hops = 0;
 
     uintptr_t ChainDetour = 0;
+    uintptr_t ChainSlot = 0;
+    uint8_t ChainBytes[kSlotJumpBytes] = {};
     size_t ChainJumpLength = 0;
     std::string Note;
 };
@@ -371,6 +401,7 @@ bool ResolveEntry(uintptr_t entry, EntryResolution* out) {
         }
 
         uintptr_t next = 0;
+        uintptr_t jumpSlot = 0;
         size_t jumpLength = 0;
         const char* form = isSlotJump ? "FF 25" : (isNearJump ? "E9" : "EB");
 
@@ -382,6 +413,7 @@ bool ResolveEntry(uintptr_t entry, EntryResolution* out) {
             std::memcpy(&displacement, code + 2, sizeof(displacement));
             const uintptr_t slot = current + 6 + static_cast<uintptr_t>(static_cast<intptr_t>(displacement));
             jumpLength = (displacement == 0) ? 14 : 6;
+            jumpSlot = slot;
 
             void* destination = nullptr;
             if (!SafeMem_Read(reinterpret_cast<const void*>(slot), &destination, sizeof(destination)) ||
@@ -431,6 +463,8 @@ bool ResolveEntry(uintptr_t entry, EntryResolution* out) {
             out->Body = current;
             out->Hops = hops;
             out->ChainDetour = next;
+            out->ChainSlot = jumpSlot;
+            std::memcpy(out->ChainBytes, code, sizeof(code));
             out->ChainJumpLength = jumpLength;
             return true;
         }
@@ -499,6 +533,7 @@ bool InlineHook::Install(void* target, void* detour, void** originalOut, std::st
     m_Entry = nullptr;
     m_ForwarderHops = 0;
 
+    const ULONGLONG resolveStarted = GetTickCount64();
     EntryResolution entry;
     const uintptr_t entryAddress = reinterpret_cast<uintptr_t>(target);
     if (!ResolveEntry(entryAddress, &entry)) {
@@ -507,64 +542,66 @@ bool InlineHook::Install(void* target, void* detour, void** originalOut, std::st
     }
 
     if (entry.Shape == EntryShape::Chain) {
-        if (entry.ChainJumpLength != kSlotJumpBytes) {
-            char text[224];
-            std::snprintf(text, sizeof(text),
-                          "the entry %p carries another hook's %zu-byte jump, and only a %zu-byte "
-                          "jump can be written over it without displacing anything",
-                          reinterpret_cast<void*>(entryAddress), entry.ChainJumpLength,
-                          kSlotJumpBytes);
-            return fail(text);
+        if (entry.ChainJumpLength != kSlotJumpBytes || !entry.ChainSlot) {
+            return fail("the existing hook does not use a six-byte external-slot jump");
+        }
+        if ((entry.ChainSlot % alignof(void*)) != 0) {
+            return fail("the existing jump slot is not aligned for an atomic pointer exchange");
+        }
+        if (entry.ChainDetour == reinterpret_cast<uintptr_t>(detour)) {
+            return fail("the existing jump slot already points to this detour");
+        }
+        if (SafeMem_Compare(reinterpret_cast<const void*>(entry.Body), entry.ChainBytes,
+                            sizeof(entry.ChainBytes)) != 0) {
+            return fail("the entry changed while resolving its jump slot");
         }
 
-        uint8_t* slotPage = static_cast<uint8_t*>(
-            ReserveNear(entryAddress, 0x1000, entryAddress > kSearchRange ? entryAddress - kSearchRange : 0,
-                        entryAddress + kSearchRange, nullptr));
-        if (!slotPage) return fail("no free page within reach of the entry for the jump's slot");
+        auto slot = reinterpret_cast<void**>(entry.ChainSlot);
+        void* const predecessor = reinterpret_cast<void*>(entry.ChainDetour);
+        void* const previousOriginal = originalOut ? *originalOut : nullptr;
+        void* const previousTrampoline = m_Trampoline;
+        m_Trampoline = predecessor;
+        if (originalOut) *originalOut = predecessor;
 
-        void* const destination = detour;
-        std::memcpy(slotPage, &destination, sizeof(destination));
-
-        uint8_t* const start = reinterpret_cast<uint8_t*>(entryAddress);
-
-        std::memcpy(m_Saved, start, kSlotJumpBytes);
-
-        DWORD previous = 0;
-        if (!VirtualProtect(start, kSlotJumpBytes, PAGE_EXECUTE_READWRITE, &previous)) {
-            VirtualFree(slotPage, 0, MEM_RELEASE);
-            return fail("VirtualProtect failed on the entry");
+        const SlotExchangeResult exchanged = ExchangeSlotPointer(slot, predecessor, detour);
+        if (!exchanged.Exchanged) {
+            m_Trampoline = previousTrampoline;
+            if (originalOut) *originalOut = previousOriginal;
+            const char* failure = exchanged.Accessible ? "the existing jump slot changed before installation"
+                                                       : "the existing jump slot could not be updated";
+            if (exchanged.ProtectionError) {
+                char text[256];
+                std::snprintf(text, sizeof(text),
+                              "%s; slot page protection restoration failed (Win32 %lu)",
+                              failure, exchanged.ProtectionError);
+                return fail(text);
+            }
+            return fail(failure);
         }
 
-        if (originalOut) *originalOut = reinterpret_cast<void*>(entry.ChainDetour);
-        m_Trampoline = reinterpret_cast<void*>(entry.ChainDetour);
-
-        int strandedMoved = 0;
-        {
-            ThreadFreeze freeze(start, kSlotJumpBytes, nullptr, nullptr);
-            WriteSlotJump(start, reinterpret_cast<uintptr_t>(slotPage));
-            strandedMoved = freeze.StrandedMoved();
-        }
-
-        VirtualProtect(start, kSlotJumpBytes, previous, &previous);
-        FlushInstructionCache(GetCurrentProcess(), start, kSlotJumpBytes);
-
-        m_Target = start;
+        m_Target = reinterpret_cast<void*>(entry.Body);
         m_Entry = reinterpret_cast<void*>(entryAddress);
         m_ForwarderHops = entry.Hops;
         m_Chained = true;
+        m_ChainedSlot = slot;
         m_Detour = detour;
-        m_StolenBytes = kSlotJumpBytes;
+        m_StolenBytes = 0;
         m_Installed = true;
 
-        char summary[512];
-        const int written = std::snprintf(
-            summary, sizeof(summary),
-            "took over an entry another hook already owns: wrote a %zu-byte jump over its own at %p "
-            "(slot %p), and Original() is that hook's detour at %p, so a call runs this hook first "
-            "and then that one; no byte of its displaced region was touched; threads moved: %d",
-            kSlotJumpBytes, reinterpret_cast<void*>(entryAddress), static_cast<void*>(slotPage),
-            reinterpret_cast<void*>(entry.ChainDetour), strandedMoved);
-        m_Summary.assign(summary, written > 0 ? static_cast<size_t>(written) : 0);
+        char summary[384];
+        std::snprintf(summary, sizeof(summary),
+                      "chained through existing jump slot %p at %p; Original()=%p; "
+                      "entry bytes unchanged, no allocation or thread suspension; %llu ms",
+                      static_cast<void*>(slot), m_Target, predecessor,
+                      static_cast<unsigned long long>(GetTickCount64() - resolveStarted));
+        m_Summary = summary;
+        if (exchanged.ProtectionError) {
+            char warning[128];
+            std::snprintf(warning, sizeof(warning),
+                          "; slot page protection restoration failed (Win32 %lu)",
+                          exchanged.ProtectionError);
+            m_Summary += warning;
+        }
         return true;
     }
 
@@ -864,16 +901,30 @@ bool InlineHook::Install(void* target, void* detour, void** originalOut, std::st
 void InlineHook::Remove() {
     if (!m_Installed || !m_Target) return;
 
-    const size_t patchBytes = m_Chained ? kSlotJumpBytes : kJumpBytes;
-
-    DWORD previous = 0;
-    if (VirtualProtect(m_Target, patchBytes, PAGE_EXECUTE_READWRITE, &previous)) {
-        {
-            ThreadFreeze freeze(m_Target, patchBytes, nullptr, nullptr);
-            std::memcpy(m_Target, m_Saved, patchBytes);
+    DWORD protectionError = 0;
+    if (m_ChainedSlot) {
+        const SlotExchangeResult restored = ExchangeSlotPointer(m_ChainedSlot, m_Detour, m_Trampoline);
+        if (!restored.Exchanged) {
+            if (restored.ProtectionError) {
+                char warning[160];
+                std::snprintf(warning, sizeof(warning),
+                              "jump slot removal deferred; page protection restoration failed (Win32 %lu)",
+                              restored.ProtectionError);
+                m_Summary = warning;
+            }
+            return;
         }
-        VirtualProtect(m_Target, patchBytes, previous, &previous);
-        FlushInstructionCache(GetCurrentProcess(), m_Target, patchBytes);
+        protectionError = restored.ProtectionError;
+    } else {
+        DWORD previous = 0;
+        if (VirtualProtect(m_Target, kJumpBytes, PAGE_EXECUTE_READWRITE, &previous)) {
+            {
+                ThreadFreeze freeze(m_Target, kJumpBytes, nullptr, nullptr);
+                std::memcpy(m_Target, m_Saved, kJumpBytes);
+            }
+            VirtualProtect(m_Target, kJumpBytes, previous, &previous);
+            FlushInstructionCache(GetCurrentProcess(), m_Target, kJumpBytes);
+        }
     }
 
     m_Target = nullptr;
@@ -881,11 +932,19 @@ void InlineHook::Remove() {
     m_ForwarderHops = 0;
     m_Chained = false;
     m_Detour = nullptr;
-    m_Trampoline = nullptr;
+    if (!m_ChainedSlot) m_Trampoline = nullptr;
+    m_ChainedSlot = nullptr;
     m_StolenBytes = 0;
     m_Installed = false;
     m_Summary.clear();
     m_PlacementNotes.clear();
+    if (protectionError) {
+        char warning[128];
+        std::snprintf(warning, sizeof(warning),
+                      "jump slot restored, but page protection restoration failed (Win32 %lu)",
+                      protectionError);
+        m_Summary = warning;
+    }
 }
 
 }

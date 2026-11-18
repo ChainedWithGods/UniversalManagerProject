@@ -42,6 +42,7 @@ private:
     void* m_Entry = nullptr;
     int m_ForwarderHops = 0;
     bool m_Chained = false;
+    void** m_ChainedSlot = nullptr;
     void* m_Detour = nullptr;
     void* m_Trampoline = nullptr;
     uint8_t m_Saved[kInlineHookPatchBytes] = {};
