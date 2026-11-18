@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define AVALONIUM_MOD_API_VERSION 18u
+#define AVALONIUM_MOD_API_VERSION 21u
 #define AVALONIUM_MOD_API_MIN_VERSION 1u
 
 #define AVALONIUM_MOD_ABI_VERSION 1u
@@ -251,6 +251,20 @@ typedef struct AvaloniumModApi
 
     int32_t (*get_delegate_arguments)(void* signature, AvaloniumPropertyInfo* out_properties,
                                       int32_t max_properties);
+
+    int32_t (*get_data_table_row_count)(void* data_table);
+    int32_t (*get_data_table_row_name)(void* data_table, int32_t index, char* out_name,
+                                       int32_t capacity);
+
+    bool (*get_data_table_row_at)(void* data_table, int32_t index, void** out_row,
+                                  uint32_t* out_name_index, uint32_t* out_number);
+
+    bool (*read_property_at)(void* owner, void* base, const char* property_name,
+                             AvaloniumValue* out_value);
+    bool (*write_property_at)(void* owner, void* base, const char* property_name,
+                              const AvaloniumValue* value);
+
+    bool (*console_exec)(const char* command);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);

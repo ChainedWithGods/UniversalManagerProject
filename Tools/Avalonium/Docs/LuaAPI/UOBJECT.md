@@ -118,9 +118,12 @@ on the current engine version.
 | `ExportAsJSON([pretty])` | serialize all rows to a JSON string |
 | `__len` | row count |
 
-Row values are pushed as tables of reflected fields (`CompatPushRowTable`), using
-`CompatRowMapOffset`/`CompatRowStruct`/`CompatRowMapStride`: reflection first, then layout
-probing (stride 16 or 24 bytes).
+Row values are pushed as tables of reflected fields (`CompatPushRowTable`). The
+`CompatRowMapOffset`/`CompatRowStruct`/`CompatRowMapStride` helpers read the shared row
+map resolver: the map offset is the reflected `RowStruct` property plus one pointer,
+confirmed against every row, and the stride is the width where every element reads as a
+name followed by a readable row buffer. Nothing is hardcoded, and a table that does not
+confirm returns an empty result instead of guessed rows.
 
 ### 1.6 UEnum members
 

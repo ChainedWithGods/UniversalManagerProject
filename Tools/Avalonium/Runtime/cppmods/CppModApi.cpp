@@ -20,6 +20,7 @@
 
 #include "../console/ConsoleInternal.h"
 #include "../core/BlueprintDiscovery.h"
+#include "../core/DataTableLayout.h"
 #include "../core/EngineDiscovery.h"
 #include "../core/FunctionFinder.h"
 #include "../core/Logger.h"
@@ -1938,36 +1939,30 @@ namespace Avalonium::CppMods
             }
         }
 
+        int32_t RowStructOffsetHint(UObject* table)
+        {
+            UClass* tableClass = EngineDiscovery::GetObjectClass(g_State, table);
+            if (!tableClass) return -1;
+            PropertyRef rowStructProperty;
+            if (!FindProperty(g_State, tableClass, "RowStruct", rowStructProperty))
+                return -1;
+            return rowStructProperty.Offset > 0 ? rowStructProperty.Offset : -1;
+        }
+
+        bool ReadRowMap(EngineState& state, UObject* table,
+                        EngineDiscovery::DataTableRowMap& layout)
+        {
+            return table && EngineDiscovery::ResolveDataTableRowMap(
+                                state, table, RowStructOffsetHint(table), layout);
+        }
+
         void* ApiGetDataTableRow(void* dataTable, const char* rowName)
         {
             if (!dataTable || !rowName || !*rowName) return nullptr;
 
-            UObject* table = static_cast<UObject*>(dataTable);
-            UClass* tableClass = EngineDiscovery::GetObjectClass(g_State, table);
-            if (!tableClass) return nullptr;
-
-            PropertyRef rowStructProperty;
-            if (!FindProperty(g_State, tableClass, "RowStruct", rowStructProperty))
-                return nullptr;
-            if (rowStructProperty.Offset <= 0) return nullptr;
-
-            struct RowMapHeader
-            {
-                void* Data;
-                int32_t ArrayNum;
-                int32_t ArrayMax;
-            };
-
-            RowMapHeader header{};
-            const int32_t rowMapOffset =
-                rowStructProperty.Offset + static_cast<int32_t>(sizeof(void*));
-            if (!SafeMem_Read(reinterpret_cast<uint8_t*>(table) + rowMapOffset, &header,
-                              sizeof(header)))
-            {
-                return nullptr;
-            }
-            if (!header.Data || header.ArrayNum <= 0 || header.ArrayNum > 50000)
-                return nullptr;
+            EngineDiscovery::DataTableRowMap layout{};
+            if (!ReadRowMap(g_State, static_cast<UObject*>(dataTable), layout)) return nullptr;
+            if (layout.ArrayNum <= 0 || layout.Stride <= 0 || !layout.Data) return nullptr;
 
             std::string nameText = rowName;
             int32_t nameIndex = EngineDiscovery::ResolveFNameIndex(g_State, nameText);
@@ -1990,11 +1985,9 @@ namespace Avalonium::CppMods
             }
             if (nameIndex < 0) return nullptr;
 
-            constexpr int32_t kElementStride = 0x18;
-            for (int32_t i = 0; i < header.ArrayNum; ++i)
+            for (int32_t i = 0; i < layout.ArrayNum; ++i)
             {
-                uint8_t* element = reinterpret_cast<uint8_t*>(header.Data) +
-                                   static_cast<size_t>(i) * kElementStride;
+                uint8_t* element = layout.Data + static_cast<size_t>(i) * layout.Stride;
                 FName name{};
                 if (!SafeMem_Read(element, &name, sizeof(name))) continue;
                 if (static_cast<int32_t>(name.ComparisonIndex) != nameIndex ||
@@ -2008,6 +2001,99 @@ namespace Avalonium::CppMods
                 return row;
             }
             return nullptr;
+        }
+
+        int32_t ApiGetDataTableRowCount(void* dataTable)
+        {
+            if (!dataTable) return -1;
+            EngineDiscovery::DataTableRowMap layout{};
+            if (!ReadRowMap(g_State, static_cast<UObject*>(dataTable), layout)) return -1;
+            return layout.ArrayNum;
+        }
+
+        int32_t ApiGetDataTableRowName(void* dataTable, int32_t index, char* outName,
+                                       int32_t capacity)
+        {
+            if (outName && capacity > 0) outName[0] = '\0';
+            if (!dataTable || !outName || capacity <= 0 || index < 0) return -1;
+
+            EngineDiscovery::DataTableRowMap layout{};
+            if (!ReadRowMap(g_State, static_cast<UObject*>(dataTable), layout)) return -1;
+            if (index >= layout.ArrayNum || layout.Stride <= 0 || !layout.Data) return -1;
+
+            const uint8_t* element = layout.Data + static_cast<size_t>(index) * layout.Stride;
+            FName name{};
+            if (!SafeMem_Read(element, &name, sizeof(name))) return -1;
+            std::string text = EngineDiscovery::FNameToStr(g_State, name);
+            if (text.empty() || text[0] == '<') return -1;
+
+            const int32_t fullLength = static_cast<int32_t>(text.size());
+            if (fullLength >= capacity) text.resize(static_cast<size_t>(capacity - 1));
+            std::memcpy(outName, text.c_str(), text.size() + 1);
+            return fullLength;
+        }
+
+        bool ApiGetDataTableRowAt(void* dataTable, int32_t index, void** outRow,
+                                  uint32_t* outNameIndex, uint32_t* outNumber)
+        {
+            if (outRow) *outRow = nullptr;
+            if (outNameIndex) *outNameIndex = 0;
+            if (outNumber) *outNumber = 0;
+            if (!dataTable || index < 0) return false;
+
+            EngineDiscovery::DataTableRowMap layout{};
+            if (!ReadRowMap(g_State, static_cast<UObject*>(dataTable), layout)) return false;
+            if (index >= layout.ArrayNum || layout.Stride <= 0 || !layout.Data) return false;
+
+            const uint8_t* element = layout.Data + static_cast<size_t>(index) * layout.Stride;
+            FName name{};
+            void* row = nullptr;
+            if (!SafeMem_Read(element, &name, sizeof(name))) return false;
+            if (!SafeMem_Read(element + sizeof(FName), &row, sizeof(row)) || !row) return false;
+
+            if (outRow) *outRow = row;
+            if (outNameIndex) *outNameIndex = name.ComparisonIndex;
+            if (outNumber) *outNumber = name.Number;
+            return true;
+        }
+
+        bool ApiReadPropertyAt(void* owner, void* base, const char* propertyName,
+                               AvaloniumValue* outValue)
+        {
+            if (!outValue) return false;
+            SetNoneValue(*outValue);
+            if (!owner || !base || !propertyName) return false;
+
+            PropertyRef property;
+            if (!FindProperty(g_State, static_cast<UClass*>(owner), propertyName, property))
+                return false;
+            if (!ReadValueAt(g_State, property, static_cast<uint8_t*>(base) + property.Offset,
+                             *outValue))
+            {
+                return false;
+            }
+            StabilizeStructValue(*outValue);
+            return true;
+        }
+
+        bool ApiWritePropertyAt(void* owner, void* base, const char* propertyName,
+                                const AvaloniumValue* value)
+        {
+            if (!owner || !base || !propertyName || !value) return false;
+            if (!EnsureGameThread("write_property_at")) return false;
+
+            PropertyRef property;
+            if (!FindProperty(g_State, static_cast<UClass*>(owner), propertyName, property))
+                return false;
+            return WriteValueAt(g_State, property, static_cast<uint8_t*>(base) + property.Offset,
+                                *value);
+        }
+
+        bool ApiConsoleExec(const char* command)
+        {
+            if (!command || !*command) return false;
+            if (!EnsureGameThread("console_exec")) return false;
+            return LuaEngine::LuaHookManager::Get().ExecuteConsoleCommand(command);
         }
     }
 
@@ -2114,6 +2200,12 @@ namespace Avalonium::CppMods
         &ApiSetAssetLoadBudget,
         &ApiBindWidgetEventWithArgs,
         &ApiGetDelegateArguments,
+        &ApiGetDataTableRowCount,
+        &ApiGetDataTableRowName,
+        &ApiGetDataTableRowAt,
+        &ApiReadPropertyAt,
+        &ApiWritePropertyAt,
+        &ApiConsoleExec,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

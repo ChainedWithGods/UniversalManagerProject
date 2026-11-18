@@ -187,6 +187,20 @@ RC::Unreal::UObject* table =
 void* row = RC::Unreal::GetDataTableRow(table, "Shotgun");
 ```
 
+Rows enumerate through the runtime, which resolves the table's row map from the
+engine's own reflection and confirms it against the live rows:
+
+```cpp
+for (const std::string& name : RC::Unreal::GetDataTableRowNames(table))
+{
+    void* row = RC::Unreal::GetDataTableRow(table, name);
+    // fields from the RowStruct walk below
+}
+```
+
+`GetDataTableRowCount` returns the row count, and `GetDataTableRowAt` adds the
+row's FName key for anything that hands the row back to the game as an FName.
+
 Read the row through the table's `RowStruct`:
 
 ```cpp

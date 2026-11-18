@@ -2,6 +2,7 @@
 #include "LuaTypes.h"
 #include "LuaCompatApi.h"
 #include "../core/BlueprintDiscovery.h"
+#include "../core/DataTableLayout.h"
 #include "../core/EngineDiscovery.h"
 #include "LuaHookManager.h"
 #include "../utils/SafeMemory.h"
@@ -3049,108 +3050,42 @@ static int Lua_StaticEnum(lua_State* L) {
     return 1;
 }
 
-static int32_t DetectRowMapStride(uint8_t* arrayData, int32_t arrayNum) {
+static int32_t RowStructOffsetHint(UObject* dt) {
+    if (!dt) return -1;
+    UClass* cls = EngineDiscovery::GetObjectClass(g_State, dt);
+    if (!cls) return -1;
+    FoundProperty prop = FindPropertyOnClass(cls, "RowStruct");
+    return (prop.Found && prop.Offset > 0) ? prop.Offset : -1;
+}
 
-    return 24;
+static bool ResolveRowMap(UObject* dt, EngineDiscovery::DataTableRowMap& layout) {
+    return dt && EngineDiscovery::ResolveDataTableRowMap(g_State, dt, RowStructOffsetHint(dt), layout);
 }
 
 static UStruct* FindRowStruct(UObject* dt) {
-    if (!dt) return nullptr;
-    UClass* cls = EngineDiscovery::GetObjectClass(g_State, dt);
-    if (cls) {
-        FoundProperty prop = FindPropertyOnClass(cls, "RowStruct");
-        if (prop.Found && prop.Offset > 0) {
-            UStruct* s = nullptr;
-            if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + prop.Offset, &s, sizeof(void*)) && s && SafeMem_IsReadable(s, 64)) {
-                return s;
-            }
-        }
-    }
-    static const int32_t candidateOffsets[] = { 0x28, 0x30, 0x38, 0x40, 0x48 };
-    for (int32_t off : candidateOffsets) {
-        UStruct* s = nullptr;
-        if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + off, &s, sizeof(void*)) && s && SafeMem_IsReadable(s, 64)) {
-            UClass* sCls = EngineDiscovery::GetObjectClass(g_State, static_cast<UObject*>(s));
-            if (sCls) {
-                std::string cName = EngineDiscovery::GetObjectNameStr(g_State, static_cast<UObject*>(sCls));
-                if (cName.find("ScriptStruct") != std::string::npos || cName.find("Struct") != std::string::npos ||
-                    sCls == g_State.UClassClass || (g_State.UStructClass && EngineDiscovery::IsStructA(g_State, static_cast<UStruct*>(sCls), static_cast<UStruct*>(g_State.UStructClass)))) {
-                    return s;
-                }
-            }
-        }
-    }
-    return nullptr;
+    return EngineDiscovery::GetDataTableRowStruct(g_State, dt, RowStructOffsetHint(dt));
 }
 
 static int32_t FindRowMapOffset(UObject* dt) {
-    if (!dt) return -1;
-    UClass* cls = EngineDiscovery::GetObjectClass(g_State, dt);
-    if (cls) {
-        FoundProperty prop = FindPropertyOnClass(cls, "RowStruct");
-        if (prop.Found && prop.Offset > 0) {
+    EngineDiscovery::DataTableRowMap layout;
+    return ResolveRowMap(dt, layout) ? layout.MapOffset : -1;
+}
 
-            int32_t off = prop.Offset + sizeof(void*);
-            TArray<uint8_t> mapData = {};
-            if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + off, &mapData, sizeof(mapData)) && mapData.ArrayNum >= 0 && mapData.ArrayNum <= 50000) {
-                return off;
-            }
-        }
-    }
-
-    UStruct* rs = FindRowStruct(dt);
-    if (rs) {
-        for (int32_t off : { 0x28, 0x30, 0x38, 0x40 }) {
-            void* ptr = nullptr;
-            if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + off, &ptr, sizeof(void*)) && ptr == rs) {
-                int32_t mapOff = off + sizeof(void*);
-                TArray<uint8_t> mapData = {};
-                if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + mapOff, &mapData, sizeof(mapData)) && mapData.ArrayNum >= 0 && mapData.ArrayNum <= 50000) {
-                    return mapOff;
-                }
-            }
-        }
-    }
-
-    static const int32_t candidateOffsets[] = { 0x30, 0x38, 0x40, 0x48, 0x50 };
-    for (int32_t off : candidateOffsets) {
-        TArray<uint8_t> mapData = {};
-        if (SafeMem_Read(reinterpret_cast<uint8_t*>(dt) + off, &mapData, sizeof(mapData))) {
-            if (mapData.Data && mapData.ArrayNum >= 0 && mapData.ArrayNum <= 50000 && mapData.ArrayMax >= mapData.ArrayNum) {
-                if (mapData.ArrayNum > 0) {
-                    uint8_t* rowBuf = nullptr;
-                    if (SafeMem_Read(reinterpret_cast<uint8_t*>(mapData.Data) + sizeof(FName), &rowBuf, sizeof(void*)) && rowBuf && SafeMem_IsReadable(rowBuf, 8)) {
-                        return off;
-                    }
-                } else {
-                    return off;
-                }
-            }
-        }
-    }
-    return (g_State.UEMajor >= 5 ? 0x38 : 0x30);
+static int32_t DetectRowMapStride(uint8_t* arrayData, int32_t arrayNum) {
+    return EngineDiscovery::ResolveRowMapStride(g_State, arrayData, arrayNum, nullptr);
 }
 
 static int DataTable_GetRowNames(lua_State* L) {
     UObject* dt = GetUObject(L, 1);
-    if (!dt) { lua_newtable(L); return 1; }
-
-    int32_t rowMapOff = FindRowMapOffset(dt);
-    if (rowMapOff < 0) { lua_newtable(L); return 1; }
-
-    uint8_t* rowMapAddr = reinterpret_cast<uint8_t*>(dt) + rowMapOff;
-    TArray<uint8_t> mapData = {};
-    if (!SafeMem_Read(rowMapAddr, &mapData, sizeof(mapData)) || !mapData.Data || mapData.ArrayNum <= 0) {
-        lua_newtable(L);
-        return 1;
-    }
 
     lua_newtable(L);
-    int luaIdx = 1;
-    const int32_t stride = DetectRowMapStride(reinterpret_cast<uint8_t*>(mapData.Data), mapData.ArrayNum);
+    EngineDiscovery::DataTableRowMap layout;
+    if (!ResolveRowMap(dt, layout) || layout.ArrayNum <= 0 || layout.Stride <= 0 || !layout.Data)
+        return 1;
 
-    for (int32_t i = 0; i < mapData.ArrayNum && i < 10000; ++i) {
-        uint8_t* pairAddr = reinterpret_cast<uint8_t*>(mapData.Data) + (i * stride);
+    int luaIdx = 1;
+    for (int32_t i = 0; i < layout.ArrayNum && i < 10000; ++i) {
+        uint8_t* pairAddr = layout.Data + static_cast<size_t>(i) * layout.Stride;
         if (!SafeMem_IsReadable(pairAddr, sizeof(FName) + sizeof(void*))) continue;
 
         uint8_t* rowBuf = nullptr;
@@ -3175,23 +3110,16 @@ static int DataTable_FindRow(lua_State* L) {
     const char* targetRowName = luaL_checkstring(L, 2);
     if (!dt) { lua_pushnil(L); return 1; }
 
-    int32_t rowMapOff = FindRowMapOffset(dt);
-    if (rowMapOff < 0) { lua_pushnil(L); return 1; }
-
-    UStruct* rowStruct = FindRowStruct(dt);
-
-    uint8_t* rowMapAddr = reinterpret_cast<uint8_t*>(dt) + rowMapOff;
-    TArray<uint8_t> mapData = {};
-    if (!SafeMem_Read(rowMapAddr, &mapData, sizeof(mapData)) || !mapData.Data || mapData.ArrayNum <= 0) {
+    EngineDiscovery::DataTableRowMap layout;
+    if (!ResolveRowMap(dt, layout) || layout.ArrayNum <= 0 || layout.Stride <= 0 || !layout.Data) {
         lua_pushnil(L);
         return 1;
     }
 
-    const int32_t stride = DetectRowMapStride(reinterpret_cast<uint8_t*>(mapData.Data), mapData.ArrayNum);
     const int32_t targetNameIdx = EngineDiscovery::ResolveFNameIndex(g_State, targetRowName);
 
-    for (int32_t i = 0; i < mapData.ArrayNum && i < 10000; ++i) {
-        uint8_t* pairAddr = reinterpret_cast<uint8_t*>(mapData.Data) + (i * stride);
+    for (int32_t i = 0; i < layout.ArrayNum && i < 10000; ++i) {
+        uint8_t* pairAddr = layout.Data + static_cast<size_t>(i) * layout.Stride;
         if (!SafeMem_IsReadable(pairAddr, sizeof(FName) + sizeof(void*))) continue;
 
         uint8_t* rowBuf = nullptr;
@@ -3210,7 +3138,7 @@ static int DataTable_FindRow(lua_State* L) {
         }
 
         if (nameMatches) {
-            CompatPushRowTable(L, rowStruct, rowBuf);
+            CompatPushRowTable(L, layout.RowStruct, rowBuf);
             return 1;
         }
     }
@@ -3223,19 +3151,14 @@ static int DataTable_ForEachRow(lua_State* L) {
     UObject* dt = GetUObject(L, 1);
     if (!lua_isfunction(L, 2) || !dt) return 0;
 
-    int32_t rowMapOff = FindRowMapOffset(dt);
-    if (rowMapOff < 0) return 0;
+    EngineDiscovery::DataTableRowMap layout;
+    if (!ResolveRowMap(dt, layout) || layout.ArrayNum <= 0 || layout.Stride <= 0 || !layout.Data)
+        return 0;
 
-    UStruct* rowStruct = FindRowStruct(dt);
+    UStruct* rowStruct = layout.RowStruct;
 
-    uint8_t* rowMapAddr = reinterpret_cast<uint8_t*>(dt) + rowMapOff;
-    TArray<uint8_t> mapData = {};
-    if (!SafeMem_Read(rowMapAddr, &mapData, sizeof(mapData)) || !mapData.Data) return 0;
-
-    int32_t stride = DetectRowMapStride(reinterpret_cast<uint8_t*>(mapData.Data), mapData.ArrayNum);
-
-    for (int32_t i = 0; i < mapData.ArrayNum && i < 10000; ++i) {
-        uint8_t* pairAddr = reinterpret_cast<uint8_t*>(mapData.Data) + (i * stride);
+    for (int32_t i = 0; i < layout.ArrayNum && i < 10000; ++i) {
+        uint8_t* pairAddr = layout.Data + static_cast<size_t>(i) * layout.Stride;
         if (!SafeMem_IsReadable(pairAddr, sizeof(FName) + sizeof(void*))) continue;
 
         FName rowName = {};
@@ -3285,23 +3208,17 @@ static int DataTable_ExportAsJSON(lua_State* L) {
     bool pretty = (lua_gettop(L) >= 2) ? (lua_toboolean(L, 2) != 0) : false;
     if (!dt) { lua_pushstring(L, "{}"); return 1; }
 
-    int32_t rowMapOff = FindRowMapOffset(dt);
-    if (rowMapOff < 0) { lua_pushstring(L, "{}"); return 1; }
-
-    UStruct* rowStruct = FindRowStruct(dt);
-
-    uint8_t* rowMapAddr = reinterpret_cast<uint8_t*>(dt) + rowMapOff;
-    TArray<uint8_t> mapData = {};
-    if (!SafeMem_Read(rowMapAddr, &mapData, sizeof(mapData)) || !mapData.Data) {
+    EngineDiscovery::DataTableRowMap layout;
+    if (!ResolveRowMap(dt, layout) || layout.ArrayNum <= 0 || layout.Stride <= 0 || !layout.Data) {
         lua_pushstring(L, "{}");
         return 1;
     }
 
-    int32_t stride = DetectRowMapStride(reinterpret_cast<uint8_t*>(mapData.Data), mapData.ArrayNum);
+    UStruct* rowStruct = layout.RowStruct;
 
     lua_newtable(L);
-    for (int32_t i = 0; i < mapData.ArrayNum && i < 10000; ++i) {
-        uint8_t* pairAddr = reinterpret_cast<uint8_t*>(mapData.Data) + (i * stride);
+    for (int32_t i = 0; i < layout.ArrayNum && i < 10000; ++i) {
+        uint8_t* pairAddr = layout.Data + static_cast<size_t>(i) * layout.Stride;
         if (!SafeMem_IsReadable(pairAddr, sizeof(FName) + sizeof(void*))) continue;
 
         FName rowName = {};

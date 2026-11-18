@@ -288,6 +288,27 @@ points into engine memory and is valid only until the engine changes it. `Value`
 owns its text for STRING and NAME values; `FString` and `FName` are the text
 handles the API crosses with.
 
+The same typed reads and writes reach any reflected address, not just an
+object's members. `owner` is the class or script struct that declares the
+property and `base` points at the buffer the property lives in:
+
+```cpp
+RC::Unreal::UStruct* rowStruct = static_cast<RC::Unreal::UStruct*>(
+    table->GetProperty<RC::Unreal::UObject*>("RowStruct"));
+RC::Unreal::Value id;
+if (RC::Unreal::ReadPropertyAt(rowStruct, row, "ID", id))
+{
+    int32_t number = id.As<int32_t>();
+}
+RC::Unreal::WritePropertyAt(rowStruct, row, "ID", RC::Unreal::Value(500009));
+```
+
+- A DataTable row is read and written field by field this way: the table's
+  `RowStruct` plus the row pointer from `GetDataTableRowAt`.
+- Writes are game thread only and use the running build's layout. A write to a
+  row buffer changes the live table until it reloads. Patch note: fields resolve
+  by name, so a patch that reshapes the struct moves its offsets with it.
+
 ### Reflected calls
 
 ```cpp
@@ -329,6 +350,24 @@ contain spaces. A generated SDK may sanitize the identifier for C++
 (`Enable Player Control` becomes `Enable_Player_Control`); lookups and reflected
 calls take the engine name.
 
+### Console commands
+
+`RC::Unreal::ConsoleExec` runs one command through the engine's own console
+pipeline, the same path a typed console line takes:
+
+```cpp
+bool handled = RC::Unreal::ConsoleExec("stat fps");
+```
+
+It returns whether the engine or a registered console handler claimed the
+command. Game thread only.
+
+Commands run on the local player's exec chain, so they need an in-game
+controller with a pawn: in a menu, loading screen or level transition the
+engine drops console input silently. A cheat command also needs the
+controller's `CheatManager` instance; read the property of that name to check
+before sending one.
+
 ### Data tables
 
 `RC::Unreal::GetDataTableRow` returns the live row buffer for a row name, or null:
@@ -362,6 +401,32 @@ for (const RC::Unreal::PropertyInfo& property :
   instance number 1, which is how duplicate FNames are displayed.
 - A row name that names no row returns null. A member with no value reads as a
   null object pointer or zero bytes.
+
+Enumeration comes from the runtime. It resolves the table's row map from the
+engine's own reflection and confirms it against every live row, so no layout
+offset or stride lives in the mod:
+
+```cpp
+int32_t count = RC::Unreal::GetDataTableRowCount(table);   // -1 when unresolved
+std::vector<std::string> names = RC::Unreal::GetDataTableRowNames(table);
+
+void* row = nullptr;
+uint32_t nameIndex = 0;
+uint32_t number = 0;
+if (RC::Unreal::GetDataTableRowAt(table, 0, &row, nameIndex, number))
+{
+    // row is the live buffer; nameIndex and number are the row's FName key
+}
+```
+
+- Enumeration order is the table's own map order, and every name round-trips into
+  `GetDataTableRow`.
+- A rendered name can carry an instance number (`Foo_0` is `Foo` with number 1).
+  When a row goes back to the game as an FName, use the key pair from
+  `GetDataTableRowAt`; the text alone loses the number.
+- `-1` and `false` mean the row map did not resolve. Nothing is guessed.
+- Row fields read and write through `ReadPropertyAt` / `WritePropertyAt` (see
+  Properties above): the row pointer and its `RowStruct` identify the address.
 
 Example: draw the first icon-like object member of a row.
 

@@ -87,96 +87,29 @@ Why it matters:
 
 ## 2. DataTable Explorer
 
-Walk every DataTable row and read its fields through the table's own
-`RowStruct`. No generated headers, no per-game struct definitions.
+Enumerate every row through the runtime's row API, then read the row buffer
+through the table's own `RowStruct`. No generated headers and no layout offsets
+in the mod.
 
 ```cpp
-std::string Utf16ToUtf8(const void* data, int32_t count)
-{
-    const wchar_t* chars = static_cast<const wchar_t*>(data);
-    std::string out;
-    for (int32_t i = 0; i < count; ++i)
-    {
-        uint32_t code = static_cast<uint16_t>(chars[i]);
-        if (code >= 0xD800 && code <= 0xDBFF && i + 1 < count)
-        {
-            const uint32_t low = static_cast<uint16_t>(chars[i + 1]);
-            if (low >= 0xDC00 && low <= 0xDFFF)
-            {
-                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
-                ++i;
-            }
-        }
-        if (code < 0x80) out += static_cast<char>(code);
-        else if (code < 0x800)
-        {
-            out += static_cast<char>(0xC0 | (code >> 6));
-            out += static_cast<char>(0x80 | (code & 0x3F));
-        }
-        else if (code < 0x10000)
-        {
-            out += static_cast<char>(0xE0 | (code >> 12));
-            out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (code & 0x3F));
-        }
-        else
-        {
-            out += static_cast<char>(0xF0 | (code >> 18));
-            out += static_cast<char>(0x80 | ((code >> 12) & 0x3F));
-            out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (code & 0x3F));
-        }
-    }
-    return out;
-}
-
 void DumpRows(RC::Unreal::UObject* table)
 {
-    RC::Unreal::UFunction* names = table->FindFunction("GetDataTableRowNames");
-    RC::Unreal::UClass* stringsClass =
-        RC::Unreal::UObject::FindClass("KismetStringLibrary");
-    RC::Unreal::UObject* strings =
-        stringsClass ? stringsClass->GetDefaultObject() : nullptr;
-    RC::Unreal::UFunction* conv =
-        strings ? strings->FindFunction("Conv_NameToString") : nullptr;
-    if (!names || !conv) return;
+    const int32_t count = RC::Unreal::GetDataTableRowCount(table);
+    if (count <= 0) return;
 
-    int32_t frameSize = (std::max)(names->GetParametersSize(), 0x40);
-    std::vector<uint8_t> frame(static_cast<size_t>((frameSize + 15) & ~15), 0);
-    void* tablePointer = table;
-    std::memcpy(frame.data(), &tablePointer, 8);
-    if (!table->ProcessEvent(names, frame.data())) return;
-
-    void* nameArray = nullptr;
-    int32_t count = 0;
-    std::memcpy(&nameArray, frame.data() + 0x8, 8);
-    std::memcpy(&count, frame.data() + 0x10, 4);
-    if (!nameArray || count <= 0) return;
-
-    RC::Unreal::UObject* rowStruct =
-        table->GetProperty<RC::Unreal::UObject*>("RowStruct");
+    RC::Unreal::UObject* rowStruct = table->GetProperty<RC::Unreal::UObject*>("RowStruct");
     const auto properties =
         static_cast<RC::Unreal::UStruct*>(rowStruct)->GetProperties();
 
     for (int32_t i = 0; i < count; ++i)
     {
-        const uint8_t* rawName = static_cast<const uint8_t*>(nameArray) + i * 8;
-        std::string name;
-        {
-            std::vector<uint8_t> textFrame(0x40, 0);
-            std::memcpy(textFrame.data(), rawName, 8);
-            if (strings->ProcessEvent(conv, textFrame.data()))
-            {
-                void* text = nullptr;
-                int32_t length = 0;
-                std::memcpy(&text, textFrame.data() + 0x8, 8);
-                std::memcpy(&length, textFrame.data() + 0x10, 4);
-                if (text && length > 0) name = Utf16ToUtf8(text, length);
-            }
-        }
+        void* row = nullptr;
+        uint32_t nameIndex = 0;
+        uint32_t number = 0;
+        if (!RC::Unreal::GetDataTableRowAt(table, i, &row, nameIndex, number)) continue;
 
-        void* row = RC::Unreal::GetDataTableRow(table, name.c_str());
-        if (!row) continue;
+        std::string name;
+        if (!RC::Unreal::GetDataTableRowName(table, i, name)) continue;
 
         for (const RC::Unreal::PropertyInfo& property : properties)
         {
@@ -186,13 +119,27 @@ void DumpRows(RC::Unreal::UObject* table)
         }
     }
 }
+
+// Every row name at once, in map order.
+void ListRows(RC::Unreal::UObject* table)
+{
+    for (const std::string& name : RC::Unreal::GetDataTableRowNames(table))
+    {
+        void* row = RC::Unreal::GetDataTableRow(table, name);
+        // row is the live buffer for this name
+    }
+}
 ```
 
 Why it matters:
 
+- The runtime resolves the table's row map from the engine's own reflection and
+  confirms it against every live row before returning anything. The mod carries
+  no offset and no stride.
 - Rows are live table storage. Read them, do not write them.
-- Names that render as `Foo_0` are FNames with an instance number. The runtime
-  resolves both the rendered name and the base name, so pass what the table shows.
+- A rendered name can carry an instance number (`Foo_0` is `Foo` with number 1).
+  Anything handed back to the game as an FName needs the key pair from
+  `GetDataTableRowAt`, not just the text.
 - Row icon fields are object properties with "icon" in the name. Scan for them
   instead of hardcoding one field name.
 - A row name can exist in several tables. Try each table until the row contains

@@ -35,6 +35,7 @@ set(SOURCES
     core/ObjectArray.cpp
     core/NameResolution.cpp
     core/ObjectUtils.cpp
+    core/DataTableLayout.cpp
     core/WorldDiscovery.cpp
     core/EngineDetection.cpp
     core/AllocatorSlotScan.cpp

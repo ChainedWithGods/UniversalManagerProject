@@ -672,4 +672,93 @@ namespace RC::Unreal
                                              std::string(rowName).c_str())
                    : nullptr;
     }
+
+    inline int32_t GetDataTableRowCount(UObject* table)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        return (api && api->get_data_table_row_count)
+                   ? api->get_data_table_row_count(table ? table->Address() : nullptr)
+                   : -1;
+    }
+
+    inline bool GetDataTableRowName(UObject* table, int32_t index, std::string& outName)
+    {
+        outName.clear();
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->get_data_table_row_name || !table) return false;
+
+        char buffer[256];
+        int32_t length =
+            api->get_data_table_row_name(table->Address(), index, buffer, sizeof(buffer));
+        if (length < 0) return false;
+        if (length >= static_cast<int32_t>(sizeof(buffer)))
+        {
+            std::string longer(static_cast<size_t>(length) + 1, '\0');
+            length = api->get_data_table_row_name(table->Address(), index, longer.data(),
+                                                  static_cast<int32_t>(longer.size()));
+            if (length < 0) return false;
+            longer.resize(static_cast<size_t>(length));
+            outName = std::move(longer);
+            return true;
+        }
+        outName.assign(buffer, static_cast<size_t>(length));
+        return true;
+    }
+
+    inline std::vector<std::string> GetDataTableRowNames(UObject* table)
+    {
+        std::vector<std::string> names;
+        const int32_t count = GetDataTableRowCount(table);
+        if (count <= 0 || !table) return names;
+
+        names.reserve(static_cast<size_t>(count));
+        for (int32_t i = 0; i < count; ++i)
+        {
+            std::string name;
+            if (GetDataTableRowName(table, i, name)) names.push_back(std::move(name));
+        }
+        return names;
+    }
+
+    inline bool GetDataTableRowAt(UObject* table, int32_t index, void** outRow,
+                                  uint32_t& outNameIndex, uint32_t& outNumber)
+    {
+        outNameIndex = 0;
+        outNumber = 0;
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        return api && api->get_data_table_row_at &&
+               api->get_data_table_row_at(table ? table->Address() : nullptr, index, outRow,
+                                          &outNameIndex, &outNumber);
+    }
+
+    inline bool ReadPropertyAt(UStruct* owner, void* base, std::string_view propertyName,
+                               Value& outValue)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->read_property_at || !owner || !base) return false;
+        AvaloniumValue raw{};
+        if (!api->read_property_at(owner->Address(), base,
+                                   std::string(propertyName).c_str(), &raw))
+        {
+            return false;
+        }
+        outValue = Value::FromRaw(raw);
+        return true;
+    }
+
+    inline bool WritePropertyAt(UStruct* owner, void* base, std::string_view propertyName,
+                                const Value& value)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->write_property_at || !owner || !base) return false;
+        return api->write_property_at(owner->Address(), base,
+                                      std::string(propertyName).c_str(), &value.Raw());
+    }
+
+    inline bool ConsoleExec(std::string_view command)
+    {
+        const AvaloniumModApi* api = Avalonium::Detail::Api();
+        if (!api || !api->console_exec) return false;
+        return api->console_exec(std::string(command).c_str());
+    }
 }
