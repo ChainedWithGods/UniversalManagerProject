@@ -13,6 +13,10 @@ question that a spawn workflow runs into:
 The table only grows. A mod built against a newer SDK needs a runtime whose table
 is at least as new; `AvaloniumGetModApi` returns null instead of a short table.
 
+These pages assume a built and loaded mod. [Build Your First C++ Mod](../Installation/FirstCppMod.md)
+covers the project, build and deploy steps, and [Installation](../Installation/Installation.md)
+covers the runtime itself.
+
 ---
 
 ## 1. Read the caller's out parameters

@@ -31,8 +31,9 @@ On `DLL_PROCESS_ATTACH`:
    attempt/outcome.
 6. Starts `LogTailThread`, which tails `<proxy directory>\Avalonium.log` into
    `dwmapi_proxy.log`: so a single file shows both proxy and runtime output.
-   The tail path is fixed; an `injector_config.json` that moves the runtime log
-   elsewhere is not consulted, so the proxy tail stays empty in that setup.
+   The tail path is fixed; a runtime log moved elsewhere, for example into a
+   Universal Manager profile folder, is not consulted, so the proxy tail stays
+   empty in that setup.
 
 On `DLL_PROCESS_DETACH`: stop tail thread (≤2 s), `FreeLibrary` the real
 dwmapi, log and close.

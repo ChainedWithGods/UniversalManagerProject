@@ -67,11 +67,17 @@ C++ mod limits:
   build and are not carried by the runtime.
 - No standalone FText value constructor. Widget text is built by
   `RC::Widgets::SetText`; other text values are copied as raw bytes.
-- New widget Blueprint classes and new texture assets cannot be created. Mods
-  compose the engine's native widget classes and reuse existing textures, fonts,
-  brushes and styles. Texture views are D3D11 views or D3D12 descriptors the engine
+- New widget Blueprint classes and new cooked texture assets cannot be created.
+  Mods compose the engine's native widget classes, reuse existing textures, fonts,
+  brushes and styles, and build runtime textures from encoded images with
+  `RC::Images`. Texture views are D3D11 views or D3D12 descriptors the engine
   already created; a texture without a render resource, or an overlay backend other
   than D3D11 or D3D12, yields 0.
+- An imported image is a transient texture, not a package asset. `RC::Images`
+  decodes through the game's own ImageWrapper build, so the usable formats are
+  that build's formats (PNG, JPEG and BMP in the supported trees), and unsupported
+  input returns null. The texture lasts for the process and the mod imports it
+  again on the next run.
 - Data table rows are live table-owned buffers. The API reads a row through the
   table's `RowStruct`; it does not copy or write the row.
 - Constructed objects are not GC-rooted by the runtime. A mod attaches them to a

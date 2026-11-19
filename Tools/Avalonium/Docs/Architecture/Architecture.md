@@ -21,12 +21,13 @@ This documentation set is organised the same way the runtime source tree is:
 
 | API folder | Runtime source | What it documents |
 | :--- | :--- | :--- |
+| [Installation](../Installation/Installation.md) | `Runtime/DLL`, `Helpers` | Install paths, runtime check, SDK generation, first C++ mod, troubleshooting |
 | [RuntimeAPI](../RuntimeAPI/README.md) | `Runtime/api`, `Runtime/core/dllmain.cpp`, `Runtime/AggressiveDog`, `Runtime/proxy` | DLL exports, IPC command protocol, `Avalonium.ini`, crash watchdog, dwmapi proxy bootstrap |
 | [DiscoveryAPI](../DiscoveryAPI/README.md) | `Runtime/core` | Engine version detection, pattern scanning, globals/offsets/reflection discovery, allocator identification, object index, blueprint & asset-registry discovery, encrypted discovery cache, structured logging |
 | [ConsoleAPI](../ConsoleAPI/README.md) | `Runtime/console` | In-game Unreal console enabler, command unlocking, dumps |
 | [CryptoAPI](../CryptoAPI/README.md) | `Runtime/crypto` | AES-256 key discovery from live memory, pak/UTOC inspection and key verification |
 | [LuaAPI](../LuaAPI/README.md) | `Runtime/lua` | Complete Lua modding surface: globals, UObject handles, hooks, timers, keybinds, compatibility layer, built-in mods |
-| [CppAPI](../CppAPI/README.md) | `Runtime/cppmods` | Native C++ mod loader, C ABI table, reflected values and calls, object construction, UMG widget kit and delegates, typed containers, native and interpreted UFunction hooks, native non-UFUNCTION resolution and calls, key binds, SDK headers |
+| [CppAPI](../CppAPI/README.md) | `Runtime/cppmods` | Native C++ mod loader, C ABI table, reflected values and calls, object construction, UMG widget kit and delegates, typed containers, native and interpreted UFunction hooks, native non-UFUNCTION resolution and calls, image import, key binds, SDK headers |
 | [OverlayAPI](../OverlayAPI/README.md) | `Runtime/overlay` | ImGui overlay (Globals, World Explorer, Live Editor, Global Search), Lua overlay API |
 | [SafeMemAPI](../SafeMemAPI/README.md) | `Runtime/utils` | Fault-free memory reads/writes, page-table oracle, inline hook engine |
 | [SdkAPI](../SdkAPI/README.md) | `Runtime/sdk` | C++ SDK generator, ReflectionDB/diff, validation and libclang pipeline |

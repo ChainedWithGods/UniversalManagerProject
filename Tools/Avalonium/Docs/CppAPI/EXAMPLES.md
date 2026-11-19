@@ -7,6 +7,11 @@ a generated SDK, a mappings file, a game name or an engine offset.
 
 The same compiled DLL targets UE 4.23 through 5.8.
 
+Setup is not repeated here: [Installation](../Installation/Installation.md),
+[Build Your First C++ Mod](../Installation/FirstCppMod.md) and
+[SDK generation](../Installation/SDKGeneration.md) cover the runtime, the project
+and the generated headers.
+
 ---
 
 ## 1. Texture Browser
@@ -458,6 +463,119 @@ Why it matters:
 - A path test only sees mods that chose a mod-specific mount point. The pak scan
   sees every local pak the game loads, including asset overrides, without a game
   name or a hardcoded mount list.
+
+---
+
+## 9. Image Import
+
+Ship an image with the mod and show it without the editor or a pak. The runtime
+decodes it through the game's own ImageWrapper module into a live texture:
+
+```cpp
+#include <Avalonium/Avalonium.hpp>
+#include <Avalonium/ImGuiHook.hpp>
+
+#include <atomic>
+#include <cstdint>
+
+class LogoWindow final : public RC::CppUserModBase
+{
+  public:
+    LogoWindow()
+    {
+        ModName = "Logo Window";
+        ModVersion = "0.1.0";
+    }
+
+    void on_unreal_init() override
+    {
+        m_RenderId = RC::ImGui::RegisterRender("LogoWindow", &LogoWindow::Render, this);
+    }
+
+    void on_update() override
+    {
+        if (m_Texture.load(std::memory_order_relaxed)) return;
+
+        RC::Unreal::UObject* texture = RC::Images::Load("logo.png");
+        if (!texture) return;
+
+        m_Width.store(texture->Call<int32_t>("Blueprint_GetSizeX"),
+                      std::memory_order_relaxed);
+        m_Height.store(texture->Call<int32_t>("Blueprint_GetSizeY"),
+                       std::memory_order_relaxed);
+        m_Texture.store(texture, std::memory_order_release);
+    }
+
+    void on_unload() override
+    {
+        if (m_RenderId)
+        {
+            RC::ImGui::UnregisterRender(m_RenderId);
+            m_RenderId = 0;
+        }
+        if (RC::Unreal::UObject* texture = m_Texture.exchange(nullptr))
+        {
+            RC::Images::Release(texture);
+        }
+    }
+
+  private:
+    static void Render(void* user)
+    {
+        auto* self = static_cast<LogoWindow*>(user);
+        if (!RC::ImGui::BeginFrame()) return;
+
+        if (!ImGui::Begin("Logo Window"))
+        {
+            ImGui::End();
+            return;
+        }
+
+        RC::Unreal::UObject* texture = self->m_Texture.load(std::memory_order_acquire);
+        const uint64_t view = texture ? RC::ImGui::TextureId(texture) : 0;
+        const int32_t width = self->m_Width.load(std::memory_order_relaxed);
+        const int32_t height = self->m_Height.load(std::memory_order_relaxed);
+        if (view && width > 0 && height > 0)
+        {
+            ImGui::Image(static_cast<ImTextureID>(view),
+                         ImVec2(static_cast<float>(width),
+                                static_cast<float>(height)));
+        }
+        ImGui::End();
+    }
+
+    std::atomic<RC::Unreal::UObject*> m_Texture{nullptr};
+    std::atomic<int32_t> m_Width{0};
+    std::atomic<int32_t> m_Height{0};
+    uint32_t m_RenderId = 0;
+};
+```
+
+Install the same texture into a game menu instead:
+
+```cpp
+image->CallValues("SetBrushFromTexture",
+                  {RC::Unreal::Value::Object(texture)}, nullptr);
+```
+
+The image can ship beside `dlls`, or be baked into the DLL as an `RCDATA`
+resource and passed to `RC::Images::LoadFromMemory`, so the mod stays one file.
+[TUTORIAL.md](TUTORIAL.md) section 7 shows the resource script, the lookup helper
+and both build steps.
+
+Why it matters:
+
+- A logo, an icon set or a generated image no longer needs a cooked pak. The
+  engine decodes the file or the encoded bytes and builds a transient texture;
+  the runtime roots it so GC leaves it alone.
+- The draw code is the same on D3D11 and D3D12, because the texture is an engine
+  texture and the overlay resolves its view per backend.
+- Draw at the texture's own size. Fitting it to the window contents makes the
+  image grow and shrink with the window.
+- The texture is transient, not a package asset. Release it when nothing uses it;
+  a widget that displays it keeps it alive through that reference.
+- Formats depend on the game's ImageWrapper build, and unsupported input returns
+  null.
 
 ---
 

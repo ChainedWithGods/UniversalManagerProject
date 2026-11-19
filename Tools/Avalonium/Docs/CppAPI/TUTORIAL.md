@@ -8,6 +8,13 @@ debugging live, and the traps that cost the most time.
 The example game calls are from The Killing Antidote (UE4.27), but every pattern
 here works on any supported engine version.
 
+Before this tutorial, install and verify the runtime:
+[Installation](../Installation/Installation.md) and
+[Confirm the runtime is running](../Installation/VerifyRuntime.md). If you want a
+single page that goes from an empty folder to a running mod, start with
+[Build Your First C++ Mod](../Installation/FirstCppMod.md) and come back here for
+the game-specific patterns.
+
 ---
 
 ## 1. Project setup
@@ -286,7 +293,164 @@ scan and draw afterwards.
 
 ---
 
-## 7. Calling game functions
+## 7. Your own images
+
+The runtime turns an encoded image into a live texture through the game's own
+ImageWrapper module. There are two ways to get the image into the mod: compile it
+into the DLL as a resource, or ship it as a file beside `dlls`. Both end at the
+same engine import.
+
+### Bake the image into the DLL
+
+The mod ships as one file. Keep the image in the project with a resource script:
+
+```text
+MyMod\
+  src\main.cpp
+  assets\logo.png
+  assets\logo.rc
+```
+
+```rc
+LOGO_PNG RCDATA "logo.png"
+```
+
+CMake compiles a `.rc` listed in the target sources, and the assets folder is the
+resource compiler's search path:
+
+```cmake
+add_library(MyMod MODULE src/main.cpp assets/logo.rc)
+target_include_directories(MyMod PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+```
+
+With the section 1 `build.bat`, compile the script and link the result:
+
+```bat
+rc /nologo /fo build\logo.res assets\logo.rc
+cl ... /link build\logo.res
+```
+
+Read the resource and decode it on the game thread:
+
+```cpp
+struct EmbeddedImage
+{
+    const void* Bytes = nullptr;
+    uint32_t Size = 0;
+};
+
+EmbeddedImage LoadEmbeddedImage(const char* name)
+{
+    EmbeddedImage image;
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCSTR>(&LoadEmbeddedImage), &module))
+    {
+        return image;
+    }
+    HRSRC resource = FindResourceA(module, name, RT_RCDATA);
+    if (!resource) return image;
+    HGLOBAL loaded = LoadResource(module, resource);
+    if (!loaded) return image;
+    image.Bytes = LockResource(loaded);
+    image.Size = SizeofResource(module, resource);
+    return image;
+}
+
+// game thread
+EmbeddedImage image = LoadEmbeddedImage("LOGO_PNG");
+RC::Unreal::UObject* texture =
+    RC::Images::LoadFromMemory(image.Bytes, static_cast<int32_t>(image.Size));
+```
+
+The resource stays mapped for the life of the process; do not copy or free it. The
+`GetModuleHandleExA` call uses the function's own address, so it resolves the mod
+DLL no matter where the helper is inlined.
+
+### Or ship the image beside the DLL
+
+The deployed mod folder is the one the loader scans, and the image sits directly
+in it, one level above `dlls`:
+
+```text
+MyMod\
+  logo.png                  copied by the build
+  assets\logo.png           the file in your project (source)
+  dlls\main.dll
+```
+
+After the section 1 `build.bat` copies `main.dll`, copy the image beside it:
+
+```bat
+set "MODDIR=<game>\Binaries\Win64\Mods\Avalonium\MyMod"
+copy /y "assets\logo.png" "%MODDIR%\logo.png"
+```
+
+With CMake, a POST_BUILD step does the same:
+
+```cmake
+add_custom_command(TARGET MyMod POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png"
+            "<game>/Binaries/Win64/Mods/Avalonium/MyMod/logo.png")
+```
+
+Load it with a relative path; it resolves against the mod folder:
+
+```cpp
+RC::Unreal::UObject* texture = RC::Images::Load("logo.png");
+```
+
+PNG, JPEG and BMP decode wherever the game's ImageWrapper build supports them;
+anything else returns null.
+
+### Draw it
+
+Draw like any engine texture:
+
+```cpp
+const uint64_t view = RC::ImGui::TextureId(texture);
+const int32_t width = texture->Call<int32_t>("Blueprint_GetSizeX");
+const int32_t height = texture->Call<int32_t>("Blueprint_GetSizeY");
+if (view && width > 0 && height > 0)
+{
+    ImGui::Image(static_cast<ImTextureID>(view),
+                 ImVec2(static_cast<float>(width), static_cast<float>(height)));
+}
+```
+
+Draw at the texture's own size. Fitting it to the window makes the image grow and
+shrink with the window; a fixed rect keeps it at its native pixels.
+
+The same texture works in a game menu. Construct an Image widget, place it in a
+widget tree that is on screen, and call the reflected setter:
+
+```cpp
+RC::Unreal::UObject* image = RC::Widgets::New("Image", widgetTree);
+image->CallValues("SetBrushFromTexture",
+                  {RC::Unreal::Value::Object(texture)}, nullptr);
+```
+
+Rules:
+
+- The runtime roots the imported texture, so GC keeps it. `RC::Images::Release`
+  drops the root; a widget that displays the texture keeps it alive through that
+  reference.
+- The texture is transient, not a package asset. It does not survive a process
+  restart, and the mod imports it again on the next run.
+- Import and release are game thread calls. Read the size on the game thread too;
+  engine calls in a render callback are unsafe.
+- Call `Load` once and cache the pointer. Each call decodes the file and creates
+  a new texture.
+- Check the first import: log the texture name and its size after the load. A null
+  return means the resource or file is missing, the format is outside the game's
+  ImageWrapper build, or the game strips the importers (the runtime logs that last
+  case once).
+
+---
+
+## 8. Calling game functions
 
 Simple calls use positional values:
 
@@ -323,7 +487,7 @@ engine FName `Foo` with number 1, so the game finds the row the list showed.
 
 ---
 
-## 8. Give vs spawn
+## 9. Give vs spawn
 
 Not every item has a world model. Clothing tables, for example, are data rows with
 no actor class, so a spawn request silently returns nothing.
@@ -352,7 +516,7 @@ Hook::RegisterVeto("Actor", "K2_DestroyActor", &WhileSpawning, this);
 
 ---
 
-## 9. Marking mod content
+## 10. Marking mod content
 
 Workshop content mounts under `/Game/Mod/...` in this game, so a path test catches
 part of the mod roster:
@@ -392,7 +556,7 @@ names still work the same; the mark is only for display.
 
 ---
 
-## 10. Debugging live
+## 11. Debugging live
 
 The runtime has a TCP command server (`RuntimeAPI/IPC.md`, default port 20030).
 It answers while the game runs:
@@ -419,7 +583,7 @@ The runtime log also carries `[CppMod]` lines from every loaded mod.
 
 ---
 
-## 11. Settings and UI
+## 12. Settings and UI
 
 - Save settings next to the mod with `GetModPath()`. That call is empty inside the
   render callback, so cache the path during `on_unreal_init`.
@@ -431,7 +595,7 @@ The runtime log also carries `[CppMod]` lines from every loaded mod.
 
 ---
 
-## 12. Checklist before release
+## 13. Checklist before release
 
 - The mod loads with `EnableCppMods=true` and logs its name and version.
 - F4 or the chosen key opens and closes the UI, and input focus returns to the game.
@@ -439,6 +603,8 @@ The runtime log also carries `[CppMod]` lines from every loaded mod.
 - Null and stale objects are rejected by path, not only by `IsValid`.
 - Icons are cached once, fitted to their aspect ratio, and no engine calls run on
   the render thread.
+- Imported images ship beside the DLL, load once, draw at a fixed size, and are
+  released or kept alive by a widget.
 - Temporary diagnostics are removed and the log is clean.
 
 ---
@@ -449,9 +615,10 @@ The runtime log also carries `[CppMod]` lines from every loaded mod.
 out parameters from the caller, pending-kill checks, UFunction and address vetoes,
 and pak-backed mod detection.
 
-[EXAMPLES.md](EXAMPLES.md) has complete shapes for a texture browser, a DataTable
-explorer, a live object inspector, an actor HUD with screen projection, a UFunction
-hook monitor, and a single DLL that adapts to every supported engine version.
+[EXAMPLES.md](EXAMPLES.md) has complete shapes for a texture browser, an image
+import window, a DataTable explorer, a live object inspector, an actor HUD with
+screen projection, a UFunction hook monitor, and a single DLL that adapts to every
+supported engine version.
 
 For gameplay code written against one game's classes, [SDK_MODS.md](SDK_MODS.md)
 covers mods built on the generated SDK: typed members, wrapper calls with out

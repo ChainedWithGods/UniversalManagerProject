@@ -1,6 +1,6 @@
 # LuaAPI: Lua Scripting & Mod Loader
 
-Avalonium embeds **Lua 5.4.6** (statically linked, [`Helpers/lua-5.4.6`](../../Helpers/lua-5.4.6))
+Avalonium embeds **Lua 5.4.6** (statically linked, fetched by CMake at build time)
 and registers a large scripting surface: engine access, UObject reflection, memory I/O,
 hooking, timers, keybinds, console commands and compatibility shims for the UE4SS scripting
 community. Mods are ordinary Lua files loaded from disk; no recompilation is required. No SDK,
@@ -28,6 +28,12 @@ Source: [`Runtime/lua/`](../../Runtime/lua/), `LuaManager`, `LuaUObject`, `LuaTy
 EnableLuaMods = true     ; default: true when the key is absent; aliases LuaMods, Lua
 LuaModsPath   =          ; default: <dir of Avalonium.dll>/Mods/Avalonium
 ```
+
+Install and verify the runtime first: [Installation](../Installation/Installation.md)
+and [Confirm the runtime is running](../Installation/VerifyRuntime.md). The simple
+start page for new Lua modders is
+[Lua Mods: Start Here](../Installation/LuaMods.md); this folder is the full
+reference.
 
 | Step | Where |
 | --- | --- |

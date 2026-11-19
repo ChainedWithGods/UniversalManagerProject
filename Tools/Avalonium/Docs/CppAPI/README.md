@@ -7,11 +7,13 @@ DLL targets UE 4.23 through 5.8 without a game name, an engine switch or an offs
 table.
 
 New to native mods? Start with the [tutorial](TUTORIAL.md): project setup, finding
-content, icons, game calls, debugging and the traps to avoid. Then read
+content, icons, game calls, debugging and the traps to avoid. Before the tutorial,
+install and verify the runtime ([Installation](../Installation/Installation.md)) and
+generate the game SDK ([SDK generation](../Installation/SDKGeneration.md)). Then read
 [Spawning and Mod Content](SPAWNING.md) for verified spawns, liveness checks,
 destroy vetoes and pak-backed mod detection. Browse the [examples](EXAMPLES.md) for
-texture, DataTable, inspector, HUD, hook and mod detection patterns, and the
-[generated-SDK guide](SDK_MODS.md) for typed gameplay code.
+texture and image patterns, DataTable, inspector, HUD, hook and mod detection
+workflows, and the [generated-SDK guide](SDK_MODS.md) for typed gameplay code.
 
 | Component | Source |
 | :--- | :--- |
@@ -20,6 +22,7 @@ texture, DataTable, inspector, HUD, hook and mod detection patterns, and the
 | Reflected values and calls | [`Runtime/cppmods/CppModValue.cpp`](../../Runtime/cppmods/CppModValue.cpp), [`Runtime/cppmods/CppModReflection.cpp`](../../Runtime/cppmods/CppModReflection.cpp) |
 | Containers | [`Runtime/cppmods/CppModContainers.cpp`](../../Runtime/cppmods/CppModContainers.cpp) |
 | Widget delegates | [`Runtime/cppmods/CppModWidgets.cpp`](../../Runtime/cppmods/CppModWidgets.cpp) |
+| Assets and images | [`Runtime/cppmods/CppModAssets.cpp`](../../Runtime/cppmods/CppModAssets.cpp) |
 | UFunction hooks | [`Runtime/cppmods/CppModHooks.cpp`](../../Runtime/cppmods/CppModHooks.cpp) |
 | C ABI table | [`Runtime/cppmods/CppModApi.cpp`](../../Runtime/cppmods/CppModApi.cpp) |
 
@@ -27,10 +30,15 @@ texture, DataTable, inspector, HUD, hook and mod detection patterns, and the
 
 ## 1. Mod layout
 
+First time here? [Installation](../Installation/Installation.md) sets up the
+runtime, and [Build Your First C++ Mod](../Installation/FirstCppMod.md) takes an
+empty folder to a running mod. This section is the layout reference.
+
 ```text
 <game>\Binaries\Win64\Mods\Avalonium\
   MyMod\
     enabled.txt              optional
+    logo.png                 files the mod ships
     dlls\
       main.dll               or MyMod.dll
 ```
@@ -43,6 +51,8 @@ texture, DataTable, inspector, HUD, hook and mod detection patterns, and the
   `mods.json` and `mods.txt` remain the Lua loader's list.
 - A folder may also contain `scripts/main.lua`. The C++ DLL loads before Lua scripts,
   so hooks and key binds exist before a script starts.
+- Any other file in the folder is the mod's own data. `GetModPath()` returns the
+  folder, and a relative `RC::Images::Load` path resolves against it.
 - `shared` and `Cache` are reserved directory names.
 
 The DLL must be x64, built with MSVC, and use the same STL ABI as the runtime.
@@ -147,6 +157,7 @@ The SDK is header-only; `Avalonium/Avalonium.hpp` includes the whole surface:
 | `Widgets.hpp` | Widget kit, object construction, UMG delegate bindings. |
 | `ImGui.hpp` | ImGui context, allocators, render-callback registration, texture views. |
 | `ImGuiHook.hpp` | Includes `imgui.h` and binds the mod's ImGui copy to the runtime's context and allocators. |
+| `Images.hpp` | Image files and encoded bytes decoded into live textures, with release. |
 | `GameThread.hpp` | Game-thread queue, frame count, delta seconds. |
 | `Log.hpp` | `RC::Output` and `Avalonium::Log*`. |
 
@@ -578,8 +589,47 @@ int32_t height = texture->Call<int32_t>("Blueprint_GetSizeY");
 float scale = 64.0f / std::max(width, height);
 ```
 
-- The API reads textures the game already loaded. It does not create, upload or
-  modify texture assets.
+- `TextureId` reads textures that already exist. To create a texture from an
+  image file or encoded bytes, use `RC::Images` below.
+
+### Images
+
+`RC::Images` turns an encoded image into a live texture through the game's own
+ImageWrapper module, the same import UMG and Blueprint use:
+
+```cpp
+RC::Unreal::UObject* texture = RC::Images::Load("logo.png");
+if (texture)
+{
+    int32_t width = texture->Call<int32_t>("Blueprint_GetSizeX");
+    int32_t height = texture->Call<int32_t>("Blueprint_GetSizeY");
+}
+```
+
+- `Load(path)` reads a file; a relative path resolves against the mod's own
+  folder. `LoadFromMemory(bytes, size)` decodes an encoded buffer already in
+  memory. PNG, JPEG and BMP decode wherever the game's ImageWrapper build
+  supports them; an unsupported format, a missing file or a game that strips the
+  importers returns null.
+- An image can be embedded in the DLL. Add it as an `RCDATA` resource, read the
+  bytes with `FindResource` and `LockResource`, and pass them to
+  `LoadFromMemory`; the mod then ships as one file. The tutorial's section 7 has
+  the resource script and the lookup helper.
+- The engine decodes the image into a transient `UTexture2D`. The runtime roots
+  it, so GC keeps it while the mod holds it. It is an ordinary engine texture,
+  so `TextureId` draws it on D3D11 and D3D12 with the same code.
+- Install it into a UMG Image with the widget's reflected setter:
+
+```cpp
+image->CallValues("SetBrushFromTexture", {RC::Unreal::Value::Object(texture)}, nullptr);
+```
+
+- `RC::Images::Release` drops the root. A texture a widget displays stays alive
+  through that widget's reference, so release it only when nothing uses it.
+- The texture is not a package asset. It lives for the process, is not saved
+  with the game, and the mod imports it again on the next run. Load once and
+  cache the pointer instead of importing per frame.
+- Game thread only, like every reflected call.
 
 ### Arrays
 
@@ -693,8 +743,9 @@ Read one with the array API and hand it to `PlayAnimation`; an animation binds t
 widgets by name, so it has a visible effect on a widget whose tree carries those
 names.
 
-Constructing a texture from image bytes is not exposed: `UTexture2D`'s creation
-functions are C++ only, so mods reuse the game's existing assets.
+Texture creation is exposed through `RC::Images` (see Images above), which
+decodes encoded files and buffers through the engine. Cooked `.uasset` textures
+still cannot be created at runtime.
 
 ### Function information
 
@@ -877,8 +928,12 @@ therefore owns the version-specific structure.
   seen.
 - No standalone FText value constructor. `RC::Widgets::SetText` builds one through
   the engine; text properties can otherwise be copied as raw bytes.
-- New widget Blueprint classes and new texture assets cannot be created. Mods compose
-  the engine's native widget classes and reuse existing textures, fonts and brushes.
+- New widget Blueprint classes and new cooked texture assets cannot be created.
+  Mods compose the engine's native widget classes, reuse existing textures, fonts
+  and brushes, and build runtime textures from encoded images with `RC::Images`.
+- An imported image is a transient texture, not a package asset. Formats depend on
+  the game's ImageWrapper build, and an unsupported format imports as null. The
+  texture lasts for the process and is imported again on the next run.
 - Texture views cover D3D11 and D3D12 textures the engine already prepared for
   rendering. A texture without a render resource, or an overlay backend other than
   D3D11 or D3D12, returns 0.

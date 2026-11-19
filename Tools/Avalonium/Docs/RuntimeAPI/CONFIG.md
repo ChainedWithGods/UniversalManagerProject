@@ -1,11 +1,7 @@
 # RuntimeAPI: Configuration Reference
 
-Two files control the runtime:
-
-| File | Loaded by | Purpose |
-| :--- | :--- | :--- |
-| `Avalonium.ini` | `RuntimeConfig::Load()`, next to `Avalonium.dll` | every feature toggle |
-| `injector_config.json` | `Logger.cpp`, next to `Avalonium.dll` | log path + verbose flag only |
+The runtime is configured by `Avalonium.ini`: `RuntimeConfig::Load()`, next to
+`Avalonium.dll`, owns every feature toggle.
 
 `RuntimeConfig::Load()` runs once per process (result cached). On every load it
 reads the current file, keeps the values of schema keys it finds, fills missing
@@ -295,16 +291,10 @@ WriteMiniDump=0
 > the read path and the generated file. `EnableWndProcHook` is always enabled
 > and has no INI key.
 
-## `injector_config.json`
+## Log location
 
-```json
-{
-    "log_path": "E:UniversalManager\\Tools\\Avalonium\\log\\Avalonium.log",
-}
-```
-
-* If the file is missing or has no `log_path`, the log is written next to the
-  DLL as `Avalonium.log`.
+Avalonium writes `Avalonium.log` beside `Avalonium.dll`. Universal Manager
+profiles keep the log in the profile folder.
 
 ## Derived folders
 

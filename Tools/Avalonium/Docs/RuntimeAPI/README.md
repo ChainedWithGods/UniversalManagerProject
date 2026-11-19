@@ -178,15 +178,8 @@ flat keys, and rewrites the file from its schema on every load: known keys keep
 their values, missing keys get defaults, and keys/comments outside the schema
 are dropped. `EnableWndProcHook` is hardcoded to `true` and is not an INI key.
 
-A second file, `injector_config.json`, is read by the logger only:
-
-```json
-{
-  "log_path": "E:\\...\\Avalonium.log",
-}
-```
-
-When `log_path` is absent the log defaults to `Avalonium.log` next to the DLL.
+Universal Manager profiles keep the log in the profile folder; a manual install
+writes `Avalonium.log` next to the DLL.
 
 Full key reference: [CONFIG.md](CONFIG.md).
 
@@ -224,6 +217,6 @@ variant. Both honour `VerboseLog` / `verbose_log`.
 
 * [EXPORTS.md](EXPORTS.md): every exported function with signature and semantics.
 * [IPC.md](IPC.md): every IPC command, response format and examples.
-* [CONFIG.md](CONFIG.md): `Avalonium.ini` and `injector_config.json` reference.
+* [CONFIG.md](CONFIG.md): `Avalonium.ini` reference.
 * [PROXY.md](PROXY.md): proxy bootstrap details and export forwarding.
 </content>

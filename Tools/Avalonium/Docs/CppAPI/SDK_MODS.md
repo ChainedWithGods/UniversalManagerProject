@@ -8,6 +8,10 @@ A generated SDK is the other half. It gives a mod typed classes, fields and
 function wrappers for one game build, which keeps gameplay code short and lets
 out parameters come back as normal C++ references.
 
+The SDK folder is produced by the runtime's generator.
+[SDK generation](../Installation/SDKGeneration.md) walks the commands, their
+output layout and the run check. This page starts after that folder exists.
+
 Both routes use the same runtime. Pick the SDK when you write logic against known
 game classes; keep reflection for discovery, tools and cross-game mods.
 
@@ -56,6 +60,10 @@ Add the package implementation files you actually call. Each
 `*_functions.cpp` includes `SDK.h`, so it pulls every generated header. If you
 only read fields, include the specific `*_classes.h` and skip the function
 files.
+
+The full CMake scaffold for a mod, including the Visual Studio build line, is in
+[Build Your First C++ Mod](../Installation/FirstCppMod.md). This section covers
+what changes when the generated SDK joins the include path.
 
 ```bat
 cl /nologo /std:c++20 /EHsc /O2 /MT /DNDEBUG ^
@@ -276,7 +284,7 @@ Use both:
 | Need | Use |
 | :--- | :--- |
 | Lifecycle, ImGui, key binds, settings | `AvaloniumModApi` (`Avalonium.hpp`) |
-| Texture views, DataTable rows, property paths | `AvaloniumModApi` |
+| Texture views, image import, DataTable rows, property paths | `AvaloniumModApi` |
 | Typed members and wrapper calls for one game | Generated SDK |
 
 The two tables are independent. The generated SDK checks

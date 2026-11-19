@@ -1,9 +1,9 @@
 # LuaAPI: Compatibility Surface (v3.5)
 
 The compatibility layer lets scripts written for other Unreal Lua runtimes (UE4SS)
-run unmodified against Avalonium; we aim for source compatibility, not bug-for-bug cosplay. If
-a script from another runtime works, good, reproducing its bugs was never the job. It is
-registered in three batches from
+run unmodified against Avalonium. The goal is source compatibility, not bug-for-bug
+cosplay. If a script from another runtime works, good, reproducing its bugs was
+never the job. It is registered in three batches from
 `LuaCompatApi.cpp` (batch 1 + wrappers), `LuaCompatParity.cpp` (parity globals) and
 `LuaCompatSurface.cpp` (surface closure), plus the wrapper work in
 `LuaCompatParity.cpp` and `LuaUObject.cpp`.
@@ -41,7 +41,7 @@ RuntimeVersion = {
 
 The same table is also published as the global **`Avalonium`**, so scripts can
 either feature-detect (`if RuntimeVersion.CompatMinor >= 5`) or type-check the host.
-We feature-detect on `CompatMinor`. The top-level `Major` is the runtime's own version and
+Feature-detect on `CompatMinor`. The top-level `Major` is the runtime's own version and
 tells a mod absolutely nothing about the compat surface.
 
 ---
@@ -64,7 +64,7 @@ tells a mod absolutely nothing about the compat surface.
 Thread-id handles: `ToString()`, `get()`, `GetId()`, `type()` → `"ThreadIdUserdata"`,
 `IsValid()`; `==` compares ids.
 
-Both execution paths exist, and we don't treat them as interchangeable. Run mod code on the
+Both execution paths exist and are not interchangeable. Run mod code on the
 wrong thread and the engine state corrupts in ways that look like random crashes, because
 that's exactly what they are.
 
@@ -85,7 +85,7 @@ FName("SomeName", FNAME_Find)-- pure lookup, no creation
 FName(index, _, number)      -- from a comparison index (+ optional number)
 ```
 
-We use `FNAME_Find` when a lookup is all that's wanted. The default `FNAME_Add` doesn't just
+Use `FNAME_Find` when a lookup is all that's wanted. The default `FNAME_Add` doesn't just
 find a name; it creates one, and enough of those pollute Epic's pool and slow every later
 lookup.
 
@@ -225,8 +225,8 @@ Detected mod name comes from the running Lua call stack (`DetectCurrentModName`)
 | `RestartMod(name|nil)` / `RestartCurrentMod` | Ignores the supplied name and reloads all mods |
 | `UninstallMod(name|nil)` / `UninstallCurrentMod` | Sets `"enabled": false` for the mod in `mods.json`, then reloads; it does not delete files |
 
-`RestartMod` has a name argument and ignores it. We pass a mod name expecting a single
-restart and the whole load set comes back instead.
+`RestartMod` has a name argument and ignores it. Passing a mod name expecting a single
+restart brings the whole load set back instead.
 
 ### Custom properties & console
 
