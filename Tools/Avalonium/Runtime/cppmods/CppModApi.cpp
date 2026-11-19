@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -1819,6 +1820,44 @@ namespace Avalonium::CppMods
             SetAssetRooted(static_cast<UObject*>(object), false);
         }
 
+        void* ApiLoadImage(const char* path)
+        {
+            if (!path || !*path) return nullptr;
+            if (!EnsureGameThread("load_image")) return nullptr;
+
+            std::string resolved(path);
+            const std::filesystem::path candidate(path);
+            if (candidate.is_relative())
+            {
+                if (auto* mod = static_cast<LoadedMod*>(CurrentModToken()))
+                {
+                    resolved = (std::filesystem::path(mod->FolderPath) / candidate).string();
+                }
+            }
+
+            UObject* texture = ImportImageFile(g_State, resolved);
+            if (!texture || !ApiIsValidObject(texture) || !ApiIsA(texture, "Texture2D"))
+            {
+                return nullptr;
+            }
+            SetAssetRooted(texture, true);
+            return texture;
+        }
+
+        void* ApiLoadImageFromMemory(const void* bytes, int32_t size)
+        {
+            if (!bytes || size <= 0) return nullptr;
+            if (!EnsureGameThread("load_image_from_memory")) return nullptr;
+
+            UObject* texture = ImportImageMemory(g_State, bytes, static_cast<size_t>(size));
+            if (!texture || !ApiIsValidObject(texture) || !ApiIsA(texture, "Texture2D"))
+            {
+                return nullptr;
+            }
+            SetAssetRooted(texture, true);
+            return texture;
+        }
+
         struct AssetLoadRequest
         {
             std::string Path;
@@ -2206,6 +2245,8 @@ namespace Avalonium::CppMods
         &ApiReadPropertyAt,
         &ApiWritePropertyAt,
         &ApiConsoleExec,
+        &ApiLoadImage,
+        &ApiLoadImageFromMemory,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

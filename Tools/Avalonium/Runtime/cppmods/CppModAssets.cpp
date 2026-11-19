@@ -1,5 +1,8 @@
 #include "CppModAssets.h"
 
+#include "CppModReflection.h"
+#include "CppModValue.h"
+
 #include "../core/EngineDiscovery.h"
 #include "../core/Logger.h"
 #include "../core/NameResolution.h"
@@ -149,6 +152,54 @@ namespace Avalonium::CppMods
             line += " pak(s)";
             EngineDiscovery::WriteLogLine(line.c_str());
         }
+
+        struct ImageImportState
+        {
+            UObject* Library = nullptr;
+            bool Ready = false;
+            bool Failed = false;
+        };
+
+        ImageImportState& ImageImport()
+        {
+            static ImageImportState import;
+            return import;
+        }
+
+        UObject* ImportImage(EngineState& state, const char* functionName,
+                             const AvaloniumValue (&args)[2])
+        {
+            ImageImportState& import = ImageImport();
+            if (!import.Ready)
+            {
+                if (import.Failed) return nullptr;
+
+                UClass* libraryClass = FindClass(state, "KismetRenderingLibrary");
+                if (libraryClass) import.Library = GetClassDefaultObject(state, libraryClass);
+                const bool importersPresent =
+                    libraryClass &&
+                    FindFunction(state, libraryClass, "ImportFileAsTexture2D") &&
+                    FindFunction(state, libraryClass, "ImportBufferAsTexture2D");
+                if (!import.Library || !importersPresent)
+                {
+                    import.Failed = true;
+                    EngineDiscovery::WriteLogLine(
+                        "[CppMod] Image import: this game has no KismetRenderingLibrary "
+                        "image importers; load_image is unavailable");
+                    return nullptr;
+                }
+                import.Ready = true;
+            }
+
+            AvaloniumValue result;
+            SetNoneValue(result);
+            if (!CallFunction(state, import.Library, functionName, args, 2, result))
+            {
+                return nullptr;
+            }
+            if (result.kind != AVALONIUM_VALUE_OBJECT || !result.pointer) return nullptr;
+            return static_cast<UObject*>(const_cast<void*>(result.pointer));
+        }
     }
 
     bool IsModAsset(EngineState& state, UObject* object)
@@ -174,5 +225,38 @@ namespace Avalonium::CppMods
         const std::string package = NormalizePackagePath(
             EngineDiscovery::BuildPathName(state, outermost));
         return !package.empty() && g_ModPackages.count(package) != 0;
+    }
+
+    UObject* ImportImageFile(EngineState& state, const std::string& path)
+    {
+        if (path.empty()) return nullptr;
+
+        AvaloniumValue args[2];
+        SetNoneValue(args[0]);
+        args[0].kind = AVALONIUM_VALUE_OBJECT;
+        SetStringValue(path, args[1]);
+        return ImportImage(state, "ImportFileAsTexture2D", args);
+    }
+
+    UObject* ImportImageMemory(EngineState& state, const void* bytes, size_t size)
+    {
+        if (!bytes || size == 0 || size > 0x7FFFFFFFull) return nullptr;
+
+        struct TArrayView
+        {
+            const void* Data;
+            int32_t Num;
+            int32_t Max;
+        };
+        const TArrayView view{bytes, static_cast<int32_t>(size), static_cast<int32_t>(size)};
+
+        AvaloniumValue args[2];
+        SetNoneValue(args[0]);
+        args[0].kind = AVALONIUM_VALUE_OBJECT;
+        SetNoneValue(args[1]);
+        args[1].kind = AVALONIUM_VALUE_STRUCT;
+        args[1].size = static_cast<int32_t>(sizeof(view));
+        args[1].pointer = &view;
+        return ImportImage(state, "ImportBufferAsTexture2D", args);
     }
 }
