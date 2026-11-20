@@ -9,7 +9,7 @@
 #define VER_PRODUCTVERSION_STR      "1.0.0.0"
 
 #define VER_COMPANYNAME_STR       "Universal Manager project"
-#define VER_FILEDESCRIPTION_STR   "UE4.23-UE5.7"
+#define VER_FILEDESCRIPTION_STR   "UE4.23-UE5.8"
 #define VER_INTERNALNAME_STR      "dwmapi"
 #define VER_LEGALCOPYRIGHT_STR    "Copyright (C) 2026 Universal Manager project."
 #define VER_ORIGINALFILENAME_STR  "dwmapi.dll"
