@@ -243,7 +243,7 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 | `UObject::GetObjectsOfClass(class, vector)` | Live instances. |
 | `UObject::GetObjectCount()`, `GetObjectByIndex(index)` | Walks the object array. |
 | `IsValid()` | Readability test for the object pointer. |
-| `IsPendingKill()` | True when the engine has scheduled the object for destruction (pending kill on UE4, garbage on UE5). Reflected calls on it act as no-ops. |
+| `IsPendingKill()` | True when the engine has scheduled the object for destruction (pending kill on UE4, garbage on UE5). Reflected calls on it act as no-ops. The flags come from the object array, so an object that already left the array reports false; pair it with a path check for cached pointers. |
 | `IsModAsset()` | True when the object's package is added or overridden by a pak under `<game>/Content/Paks/~mods`. The pak set is indexed once per process. |
 | `GetName`, `GetFullName`, `GetPathName` | `FString` copies. |
 | `GetClass`, `GetOuter`, `GetSuperStruct` | Class or outer pointers. |
@@ -919,7 +919,9 @@ therefore owns the version-specific structure.
   keys are compared by their raw bytes for lookup, so a padding difference can
   hide a match, and a map key cannot be renamed in place.
 - A pending-kill object stays readable, but reflected calls on it return without
-  running. Check `IsPendingKill` before acting on a cached pointer.
+  running. Check `IsPendingKill` before acting on a cached pointer, and check its
+  path: once a destroyed object leaves the object array its flags read as zero, so
+  only the collapsed `None` path reveals it.
 - A hook veto skips the original call while the caller continues as if it ran.
   Use it only when skipping leaves a valid state. Address vetoes are bound to one
   engine build.

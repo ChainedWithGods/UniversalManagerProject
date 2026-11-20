@@ -76,6 +76,11 @@ The runtime reads the object array flags for both layouts: pending kill on UE4 a
 garbage on UE5. A spawn that returns a readable actor and then reports pending kill
 was destroyed by the game during its own initialization, not by a failed spawn.
 
+A cached pointer outlives its object. After a level restart the old actor stays
+readable, leaves the object array (its flags then read as zero, so `IsPendingKill`
+reports false) and collapses to a `None` path. Reject cached objects by path as
+well, and re-resolve them per level.
+
 ---
 
 ## 3. Veto a destroy during the spawn window

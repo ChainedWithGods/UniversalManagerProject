@@ -151,7 +151,9 @@ Other rules that saved time:
 
 - `IsPendingKill()` is the engine's own destruction state. A pending-kill object
   still passes `IsValid()` and keeps its property values, but reflected calls on it
-  return without running. Check it before using a cached actor.
+  return without running. Check it before using a cached actor. A destroyed object
+  that already left the object array reports false, so the path check above stays
+  the first test.
 - After a level change, the old world, state and controller can stay readable.
   Re-resolve them per level instead of caching pointers forever.
 - `GetObjectsOfClass` returns objects oldest first. The live instance is usually
