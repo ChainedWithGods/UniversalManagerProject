@@ -142,6 +142,11 @@ QString ModManager::launchGame() {
         return "Game executable not found";
     }
 
+    if (checkAvaloniumConflict()) {
+        emit avaloniumConflictDetected();
+        return "Conflict detected: Avalonium.dll already exists in game directory";
+    }
+
     QString driveLetter = exeInfo.absolutePath().left(2).toUpper();
     if (driveLetter == "C:" && !isRunningAsAdmin()) {
         emit cDriveAdminRequired();
