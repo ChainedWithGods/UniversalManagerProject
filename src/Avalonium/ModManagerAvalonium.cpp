@@ -1,5 +1,9 @@
 #include "ModManagerInternal.h"
 
+#ifdef Q_OS_WIN
+#include <winver.h>
+#endif
+
 using namespace mmdetail;
 
 QString ModManager::resolveAvaloniumDllPath() const {
@@ -941,6 +945,59 @@ bool runtimeLogShowsReady(const QString &log) {
         && runtimeLogHasMarker(log, QStringLiteral("IOCP server started on port 20030"));
 }
 
+#ifdef Q_OS_WIN
+
+QString fileVersionString(const QString &path, const wchar_t *key) {
+    const auto *widePath = reinterpret_cast<LPCWSTR>(path.utf16());
+    DWORD ignoredHandle = 0;
+    const DWORD size = GetFileVersionInfoSizeW(widePath, &ignoredHandle);
+    if (size == 0) {
+        return QString();
+    }
+
+    QByteArray buffer(static_cast<int>(size), '\0');
+    if (!GetFileVersionInfoW(widePath, 0, size, buffer.data())) {
+        return QString();
+    }
+
+    struct Translation {
+        WORD language;
+        WORD codePage;
+    };
+    Translation *translation = nullptr;
+    UINT translationSize = 0;
+    if (!VerQueryValueW(buffer.data(), L"\\VarFileInfo\\Translation",
+                        reinterpret_cast<LPVOID *>(&translation), &translationSize)
+        || !translation || translationSize < sizeof(Translation)) {
+        return QString();
+    }
+
+    const QString query = QStringLiteral("\\StringFileInfo\\%1%2\\%3")
+        .arg(translation->language, 4, 16, QLatin1Char('0'))
+        .arg(translation->codePage, 4, 16, QLatin1Char('0'))
+        .arg(QString::fromWCharArray(key));
+
+    wchar_t *value = nullptr;
+    UINT valueSize = 0;
+    if (!VerQueryValueW(buffer.data(), reinterpret_cast<LPCWSTR>(query.utf16()),
+                        reinterpret_cast<LPVOID *>(&value), &valueSize)
+        || !value || valueSize == 0) {
+        return QString();
+    }
+
+    return QString::fromWCharArray(value).trimmed();
+}
+
+bool isAvaloniumProxyDll(const QString &path) {
+    if (!QFileInfo::exists(path)) {
+        return false;
+    }
+
+    return fileVersionString(path, L"CompanyName") == QLatin1String("Universal Manager project")
+        && fileVersionString(path, L"ProductName") == QLatin1String("dwmapi+Avalonium");
+}
+#endif
+
 }
 
 void ModManager::pollRuntimeLogOnce() {
@@ -1015,12 +1072,6 @@ QString ModManager::injectAvaloniumDll() {
 #ifndef Q_OS_WIN
     return "DLL injection is only supported on Windows";
 #else
-
-    if (checkAvaloniumConflict()) {
-        emit avaloniumConflictDetected();
-        return "Conflict detected: Avalonium.dll or UniversalManager.dll already exists in game directory";
-    }
-
     if (m_isAdvancedProcessMode) {
         if (m_selectedProcessPid <= 0) {
             return "No process selected. Please choose a running process from the list";
@@ -1192,9 +1243,12 @@ bool ModManager::checkAvaloniumConflict() {
 
     QDir binDir = exeInfo.absoluteDir();
     QString dllPath = binDir.filePath("Avalonium.dll");
-    QString legacyDllPath = binDir.filePath("UniversalManager.dll");
 
-    return QFile::exists(dllPath) || QFile::exists(legacyDllPath);
+    if (QFile::exists(dllPath)) {
+        return true;
+    }
+
+    return isAvaloniumProxyDll(binDir.filePath("dwmapi.dll"));
 #endif
 }
 
@@ -1218,8 +1272,15 @@ bool ModManager::deleteConflictingAvaloniumDll() {
     }
 
     QDir binDir = exeInfo.absoluteDir();
-    const QStringList dllCandidates = { binDir.filePath("Avalonium.dll"), binDir.filePath("UniversalManager.dll") };
+    QStringList dllCandidates = { binDir.filePath("Avalonium.dll") };
+
+    const QString proxyPath = binDir.filePath("dwmapi.dll");
+    if (isAvaloniumProxyDll(proxyPath)) {
+        dllCandidates.append(proxyPath);
+    }
+
     bool removedAny = false;
+    bool anyFailed = false;
 
     for (const QString& dllPath : dllCandidates) {
         if (QFile::exists(dllPath)) {
@@ -1237,20 +1298,23 @@ bool ModManager::deleteConflictingAvaloniumDll() {
                 DWORD error = GetLastError();
                 if (error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION) {
                     qDebug() << dllPath << "is currently in use by the game";
-                    return false;
+                } else {
+                    qDebug() << "Failed to access" << dllPath << ", error code:" << error;
                 }
-                qDebug() << "Failed to access" << dllPath << ", error code:" << error;
-                return false;
+                anyFailed = true;
+                continue;
             }
 
             CloseHandle(hFile);
             if (QFile::remove(dllPath)) {
                 removedAny = true;
+            } else {
+                anyFailed = true;
             }
         }
     }
 
-    return removedAny;
+    return removedAny && !anyFailed;
 #endif
 }
 
@@ -1400,8 +1464,7 @@ bool ModManager::isAvaloniumInjected() const {
             if (Module32FirstW(hSnap, &me)) {
                 do {
                     const QString modName = QString::fromWCharArray(me.szModule);
-                    if (modName.compare(QStringLiteral("Avalonium.dll"), Qt::CaseInsensitive) == 0 ||
-                        modName.compare(QStringLiteral("UniversalManager.dll"), Qt::CaseInsensitive) == 0) {
+                    if (modName.compare(QStringLiteral("Avalonium.dll"), Qt::CaseInsensitive) == 0) {
                         CloseHandle(hSnap);
                         return true;
                     }
@@ -1419,7 +1482,7 @@ bool ModManager::isAvaloniumInjected() const {
                 for (DWORD i = 0; i < count; i++) {
                     WCHAR szModName[MAX_PATH];
                     if (GetModuleBaseNameW(hProcess, hMods[i], szModName, sizeof(szModName) / sizeof(WCHAR))) {
-                        if (_wcsicmp(szModName, L"Avalonium.dll") == 0 || _wcsicmp(szModName, L"UniversalManager.dll") == 0) {
+                        if (_wcsicmp(szModName, L"Avalonium.dll") == 0) {
                             CloseHandle(hProcess);
                             return true;
                         }
