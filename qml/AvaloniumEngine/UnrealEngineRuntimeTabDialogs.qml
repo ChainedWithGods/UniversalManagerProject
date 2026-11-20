@@ -3774,7 +3774,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "You're trying to inject into a game but there is already Avalonium.dll (or UniversalManager.dll) next to the game.\n\nRemove the DLL from the Binaries\\Win64 folder and then re-inject."
+                        text: "The game folder already contains Avalonium.dll and Avalonium dwmapi.dll proxy.\n\nRemove them from the Binaries\\Win64 folder, then launch again."
                         font.pixelSize: 15
                         color: modManager.theme === "Glassmorphic" ? Qt.rgba(1, 1, 1, 0.7) : window.textSecondaryColor
                         wrapMode: Text.WordWrap
