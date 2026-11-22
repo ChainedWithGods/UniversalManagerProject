@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define AVALONIUM_MOD_API_VERSION 22u
+#define AVALONIUM_MOD_API_VERSION 23u
 #define AVALONIUM_MOD_API_MIN_VERSION 1u
 
 #define AVALONIUM_MOD_ABI_VERSION 1u
@@ -268,6 +268,9 @@ typedef struct AvaloniumModApi
 
     void* (*load_image)(const char* path);
     void* (*load_image_from_memory)(const void* bytes, int32_t size);
+
+    bool (*is_mod_package_path)(const char* asset_path);
+    int32_t (*mod_package_count)(void);
 } AvaloniumModApi;
 
 AVALONIUM_MOD_API_ENTRY const AvaloniumModApi* AvaloniumGetModApi(uint32_t requested_version);

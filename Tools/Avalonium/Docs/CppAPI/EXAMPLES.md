@@ -423,8 +423,8 @@ Why it matters:
 
 ## 8. Mod Content Detection
 
-Local paks mount into the game's own asset paths, so a package path cannot tell a
-re-skin from base content. `IsModAsset` checks the pak set instead:
+Local containers mount into the game's own asset paths, so a package path cannot
+tell a re-skin from base content. `IsModAsset` checks the container set instead:
 
 ```cpp
 struct Row
@@ -443,9 +443,11 @@ void MarkRows(std::vector<Row>& rows)
 }
 ```
 
-The runtime scans `<game>/Content/Paks/~mods` once and caches the package set.
-Both a package a mod adds and a game package a mod pak overrides match, so a base
-weapon whose icon and materials come from a skin pak is marked correctly.
+The runtime scans `~Mods`, `LogicMods` and `mods` once and caches the package set.
+Both a package a mod adds and a game package a mod container overrides match, so a
+base weapon whose icon and materials come from a skin container is marked
+correctly. Both `.pak` and `.utoc` are indexed, so an IoStore mod whose `.pak` is a
+pathless stub is still seen.
 
 Useful branches:
 
@@ -453,16 +455,19 @@ Useful branches:
   is caught by the path alone.
 - Check the displayed assets next. A row can be base content while its icon,
   mesh or material is overridden.
+- When the asset is only a string in a table row, use
+  `is_mod_package_path` instead; it takes the path and strips the trailing
+  `.ObjectName` that a row's path carries and a container's path does not.
 - Call it after the first level load or during a roster scan; the first call
   builds the index and every later call is a set lookup.
-- An encrypted pak index is skipped, and a mount added after the first call is
-  not in the set.
+- An encrypted container index is skipped, and a mount added after the first call
+  is not in the set.
 
 Why it matters:
 
-- A path test only sees mods that chose a mod-specific mount point. The pak scan
-  sees every local pak the game loads, including asset overrides, without a game
-  name or a hardcoded mount list.
+- A path test only sees mods that chose a mod-specific mount point. The container
+  scan sees every local container the game loads, including asset overrides,
+  without a game name or a hardcoded mount list.
 
 ---
 

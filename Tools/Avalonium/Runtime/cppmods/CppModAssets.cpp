@@ -68,6 +68,31 @@ namespace Avalonium::CppMods
             return {};
         }
 
+        std::string AssetPathToPackage(const std::string& assetPath)
+        {
+            std::string path = assetPath;
+            const size_t open = path.find('\'');
+            if (open != std::string::npos)
+            {
+                const size_t close = path.rfind('\'');
+                if (close != std::string::npos && close > open)
+                    path = path.substr(open + 1, close - open - 1);
+            }
+
+            path = NormalizePackagePath(std::move(path));
+            if (path.empty()) return {};
+
+            if (path[0] == '/')
+            {
+
+                const size_t slash = path.rfind('/');
+                const size_t dot = path.find('.', slash == std::string::npos ? 0 : slash);
+                if (dot != std::string::npos) path.resize(dot);
+                return path;
+            }
+            return PackageFromPakPath(path);
+        }
+
         std::filesystem::path GameContentPaks()
         {
             wchar_t exePath[MAX_PATH] = {};
@@ -77,14 +102,18 @@ namespace Avalonium::CppMods
             return game / "Content" / "Paks";
         }
 
-        void AddPak(const std::filesystem::path& pakPath)
+        void AddContainer(const std::filesystem::path& containerPath)
         {
-            Crypto::PakInfo info = Crypto::PakVerifier::ParsePakFile(pakPath.string());
+            const std::string extension = Lower(containerPath.extension().string());
+            const bool isUtoc = extension == ".utoc";
+            Crypto::PakInfo info = isUtoc
+                                       ? Crypto::PakVerifier::ParseUtocFile(containerPath.string())
+                                       : Crypto::PakVerifier::ParsePakFile(containerPath.string());
             if (!info.found_pak) return;
             if (info.is_encrypted)
             {
                 EngineDiscovery::WriteLogLine(
-                    ("[CppMod] Mod pak " + pakPath.filename().string() +
+                    ("[CppMod] Mod container " + containerPath.filename().string() +
                      ": encrypted index, skipped")
                         .c_str());
                 return;
@@ -104,7 +133,10 @@ namespace Avalonium::CppMods
             size_t before = g_ModPackages.size();
             for (const Crypto::ArchiveReport& report : reports)
             {
-                for (const std::string& path : report.directory.all_paths)
+
+                const std::vector<std::string>& paths =
+                    isUtoc ? report.utoc_directory.all_paths : report.directory.all_paths;
+                for (const std::string& path : paths)
                 {
                     const std::string package = PackageFromPakPath(path);
                     if (!package.empty()) g_ModPackages.insert(package);
@@ -112,8 +144,8 @@ namespace Avalonium::CppMods
             }
             if (g_ModPackages.size() != before)
             {
-                std::string line = "[CppMod] Mod pak ";
-                line += pakPath.filename().string();
+                std::string line = "[CppMod] Mod container ";
+                line += containerPath.filename().string();
                 line += ": ";
                 line += std::to_string(g_ModPackages.size() - before);
                 line += " packages";
@@ -121,35 +153,89 @@ namespace Avalonium::CppMods
             }
         }
 
+        bool IsModRootName(const std::string& name)
+        {
+            const std::string lower = Lower(name);
+            return lower == "~mods" || lower == "logicmods" || lower == "mods";
+        }
+
         void BuildIndex()
         {
             const std::filesystem::path paks = GameContentPaks();
-            const std::filesystem::path mods = paks / "~mods";
             std::error_code error;
-            if (!std::filesystem::is_directory(mods, error))
+            if (!std::filesystem::is_directory(paks, error))
             {
                 EngineDiscovery::WriteLogLine(
-                    "[CppMod] Mod asset index: Content/Paks/~mods was not found");
+                    "[CppMod] Mod asset index: Content/Paks was not found");
                 return;
             }
 
+            size_t rootCount = 0;
             size_t pakCount = 0;
-            for (std::filesystem::recursive_directory_iterator it(mods, error), end;
+            size_t utocCount = 0;
+            std::string roots;
+
+            for (std::filesystem::directory_iterator it(paks, error), end;
                  it != end; it.increment(error))
             {
                 if (error) break;
-                if (!it->is_regular_file(error)) continue;
-                std::string extension = Lower(it->path().extension().string());
-                if (extension != ".pak") continue;
-                ++pakCount;
-                AddPak(it->path());
+                std::error_code typeError;
+                if (!it->is_directory(typeError)) continue;
+                const std::string name = it->path().filename().string();
+                if (!IsModRootName(name)) continue;
+
+                ++rootCount;
+                if (!roots.empty()) roots += ", ";
+                roots += name;
+
+                const size_t before = g_ModPackages.size();
+                size_t rootPaks = 0;
+                size_t rootUtocs = 0;
+                std::error_code walkError;
+                for (std::filesystem::recursive_directory_iterator inner(it->path(), walkError),
+                     innerEnd;
+                     inner != innerEnd; inner.increment(walkError))
+                {
+                    if (walkError) break;
+                    if (!inner->is_regular_file(walkError)) continue;
+                    const std::string extension = Lower(inner->path().extension().string());
+
+                    if (extension == ".pak") ++rootPaks;
+                    else if (extension == ".utoc") ++rootUtocs;
+                    else continue;
+                    AddContainer(inner->path());
+                }
+                pakCount += rootPaks;
+                utocCount += rootUtocs;
+
+                std::string line = "[CppMod] Mod folder ";
+                line += name;
+                line += ": ";
+                line += std::to_string(g_ModPackages.size() - before);
+                line += " package(s) from ";
+                line += std::to_string(rootPaks);
+                line += " pak(s) and ";
+                line += std::to_string(rootUtocs);
+                line += " utoc(s)";
+                EngineDiscovery::WriteLogLine(line.c_str());
+            }
+
+            if (rootCount == 0)
+            {
+                EngineDiscovery::WriteLogLine(
+                    "[CppMod] Mod asset index: no mod folder under Content/Paks "
+                    "(looked for ~mods, LogicMods, mods)");
+                return;
             }
 
             std::string line = "[CppMod] Mod asset index: ";
             line += std::to_string(g_ModPackages.size());
             line += " packages from ";
             line += std::to_string(pakCount);
-            line += " pak(s)";
+            line += " pak(s) and ";
+            line += std::to_string(utocCount);
+            line += " utoc(s) in ";
+            line += roots;
             EngineDiscovery::WriteLogLine(line.c_str());
         }
 
@@ -225,6 +311,33 @@ namespace Avalonium::CppMods
         const std::string package = NormalizePackagePath(
             EngineDiscovery::BuildPathName(state, outermost));
         return !package.empty() && g_ModPackages.count(package) != 0;
+    }
+
+    bool IsModPackagePath(EngineState& state, const char* assetPath)
+    {
+        if (!assetPath || !*assetPath) return false;
+
+        std::lock_guard<std::mutex> lock(g_IndexMutex);
+        if (!g_IndexBuilt)
+        {
+            g_IndexBuilt = true;
+            BuildIndex();
+        }
+        if (g_ModPackages.empty()) return false;
+
+        const std::string package = AssetPathToPackage(assetPath);
+        return !package.empty() && g_ModPackages.count(package) != 0;
+    }
+
+    int32_t ModPackageCount(EngineState& state)
+    {
+        std::lock_guard<std::mutex> lock(g_IndexMutex);
+        if (!g_IndexBuilt)
+        {
+            g_IndexBuilt = true;
+            BuildIndex();
+        }
+        return static_cast<int32_t>(g_ModPackages.size());
     }
 
     UObject* ImportImageFile(EngineState& state, const std::string& path)

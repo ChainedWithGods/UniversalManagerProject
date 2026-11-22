@@ -13,5 +13,9 @@ namespace Avalonium::CppMods
 
     bool IsModAsset(EngineState& state, UObject* object);
 
+    bool IsModPackagePath(EngineState& state, const char* assetPath);
+
+    int32_t ModPackageCount(EngineState& state);
+
     void PumpAssetLoads();
 }

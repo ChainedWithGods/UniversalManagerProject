@@ -251,6 +251,16 @@ namespace Avalonium::CppMods
             return object && IsModAsset(g_State, static_cast<UObject*>(object));
         }
 
+        bool ApiIsModPackagePath(const char* assetPath)
+        {
+            return IsModPackagePath(g_State, assetPath);
+        }
+
+        int32_t ApiModPackageCount()
+        {
+            return ModPackageCount(g_State);
+        }
+
         const char* ApiGetObjectName(void* object)
         {
             if (!object) return "";
@@ -2247,6 +2257,8 @@ namespace Avalonium::CppMods
         &ApiConsoleExec,
         &ApiLoadImage,
         &ApiLoadImageFromMemory,
+        &ApiIsModPackagePath,
+        &ApiModPackageCount,
     };
 
     const AvaloniumSdkApi g_SdkApi = {

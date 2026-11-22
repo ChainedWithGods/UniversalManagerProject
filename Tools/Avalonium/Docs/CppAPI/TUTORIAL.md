@@ -530,9 +530,9 @@ bool IsModPath(const std::string& path)
 }
 ```
 
-Local paks under `<game>/Content/Paks/~mods` are not that simple: they can mount
-into the game's own package paths, so a base item wearing mod assets reads as base
-content. `IsModAsset` resolves the package back to the pak set:
+Local containers in the mod folders under `Content/Paks` are not that simple: they
+can mount into the game's own package paths, so a base item wearing mod assets
+reads as base content. `IsModAsset` resolves the package back to the container set:
 
 ```cpp
 bool IsModContent(RC::Unreal::UObject* object)
@@ -541,16 +541,27 @@ bool IsModContent(RC::Unreal::UObject* object)
 }
 ```
 
-The runtime indexes `~mods`, reads each pak's mount point and file list, and
-matches the object's outermost package. Both a package a mod adds and a game
+The runtime indexes `~Mods`, `LogicMods` and `mods`, reads each container's mount
+point and file list, and matches the object's outermost package. Both `.pak` and
+`.utoc` are read, because an IoStore mod usually ships a stub `.pak` with no paths
+and keeps its assets in the paired `.utoc`. Both a package a mod adds and a game
 package a mod overrides match. Apply the check to the row's own object and to the
 assets it displays; an item can be base content while its icon and materials come
-from a skin pak:
+from a skin container:
 
 ```cpp
 entry.IsMod = IsModPath(componentPath) || component->IsModAsset();
 if (!entry.IsMod && entry.Icon)
     entry.IsMod = entry.Icon->IsModAsset();
+```
+
+When the asset is only a string in a table row, there is no object to ask.
+`is_mod_package_path` takes the path instead and handles the `.ObjectName` suffix
+that a row's path carries and a container's path does not:
+
+```cpp
+const AvaloniumModApi* api = Avalonium::Detail::Api();
+entry.IsMod = api && api->is_mod_package_path(entry.MeshPath.c_str());
 ```
 
 The index is built once, on the first call, and cached for the process. Icons and

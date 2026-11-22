@@ -244,7 +244,7 @@ UObject* note = UObject::Construct(UObject::FindClass("MyNoteObject"), world);
 | `UObject::GetObjectCount()`, `GetObjectByIndex(index)` | Walks the object array. |
 | `IsValid()` | Readability test for the object pointer. |
 | `IsPendingKill()` | True when the engine has scheduled the object for destruction (pending kill on UE4, garbage on UE5). Reflected calls on it act as no-ops. The flags come from the object array, so an object that already left the array reports false; pair it with a path check for cached pointers. |
-| `IsModAsset()` | True when the object's package is added or overridden by a pak under `<game>/Content/Paks/~mods`. The pak set is indexed once per process. |
+| `IsModAsset()` | True when the object's package is added or overridden by a container in a mod folder under `Content/Paks` (`~Mods`, `LogicMods`, `mods`). The container set is indexed once per process. |
 | `GetName`, `GetFullName`, `GetPathName` | `FString` copies. |
 | `GetClass`, `GetOuter`, `GetSuperStruct` | Class or outer pointers. |
 | `IsA(name)` | Name-based class chain test. |
@@ -254,14 +254,53 @@ are never constructed, and every method asks the runtime to read the running bui
 The mod's `UObject*` is the engine object address. The free functions
 `RC::Unreal::FindObject`, `FindClass` and `FindFirstOf` mirror the static calls.
 
-`IsModAsset` answers package provenance, not engine state. Local mod paks mount
-into the game's own asset paths, so a path test cannot separate a re-skin from
-base content. The runtime scans `<game>/Content/Paks/~mods` once, reads each pak's
-mount point and file list, maps them to package paths and caches the set. Both
-cases match: a package a mod adds, and a game package whose asset a mod pak
-overrides. Checking a row's displayed icon therefore marks a base weapon whose
-icon and materials come from a skin pak. An encrypted pak index is skipped, and a
-mount added after the first call is not in the set.
+`IsModAsset` answers package provenance, not engine state. Local mod containers
+mount into the game's own asset paths, so a path test cannot separate a re-skin
+from base content. The runtime scans the mod folders under `Content/Paks` once,
+reads each container's mount point and file list, maps them to package paths and
+caches the set. Both cases match: a package a mod adds, and a game package whose
+asset a mod container overrides. Checking a row's displayed icon therefore marks a
+base weapon whose icon and materials come from a skin container. An encrypted
+container index is skipped, and a mount added after the first call is not in the
+set.
+
+Three folder names are recognised, matched case-insensitively because users
+create them by hand:
+
+| Folder | Convention |
+| :--- | :--- |
+| `~Mods` | The standard UE mod folder; the game loads it automatically. |
+| `LogicMods` | Where Blueprint mods live (`CreateLogicModsDirectory` creates it). |
+| `mods` | A plain folder some users create by hand. |
+
+A mod installed into any of them is indexed. Both `.pak` and `.utoc` containers
+are read. This matters more than it sounds: a mod shipped as IoStore often carries
+a stub `.pak` with no paths of its own and puts every asset in the paired `.utoc`,
+so a `.pak`-only index sees an empty mod. `.ucas` is skipped because it holds chunk
+data and names no packages.
+
+`IsModPackagePath` is the same question for a path you have not loaded. A table
+field names an asset, not a package, and there is no object to ask about:
+
+```cpp
+const AvaloniumModApi* api = Avalonium::Detail::Api();
+bool fromMod = api && api->is_mod_package_path(meshPath.c_str());
+```
+
+It accepts the three spellings a row or property actually produces and reduces
+each to the same package key:
+
+| Input | Package key |
+| :--- | :--- |
+| `/Game/Art/Character/PC/00_HR/EVE_HR_08/CH_P_EVE_Hair08.CH_P_EVE_Hair08` | `/game/art/character/pc/00_hr/eve_hr_08/ch_p_eve_hair08` |
+| `SkeletalMesh'/Game/Art/.../CH_P_EVE_Hair08.CH_P_EVE_Hair08'` | same |
+| `SB2/Content/Art/Character/PC/00_HR/EVE_HR_08/CH_P_EVE_Hair08.uasset` | same |
+
+The trailing `.ObjectName` is stripped, which is the part that trips people up: a
+row's mesh path carries it and a container path does not, so comparing the two
+strings raw never matches. `mod_package_count()` reports how many packages the
+index resolved, which tells you whether the index saw your containers at all
+before you go debugging the join.
 
 ### Properties
 
@@ -438,6 +477,24 @@ if (RC::Unreal::GetDataTableRowAt(table, 0, &row, nameIndex, number))
 - `-1` and `false` mean the row map did not resolve. Nothing is guessed.
 - Row fields read and write through `ReadPropertyAt` / `WritePropertyAt` (see
   Properties above): the row pointer and its `RowStruct` identify the address.
+
+Read a field through `ReadPropertyAt` rather than by copying bytes at the
+offset. The member's *type* decides how its bytes decode, and a size check alone
+silently gets it wrong:
+
+```cpp
+RC::Unreal::Value alias;
+if (RC::Unreal::ReadPropertyAt(rowStruct, row, "EquipmentAlias", alias))
+{
+    std::string text = alias.AsString();   // NAME and STRING both answer here
+}
+```
+
+A `FName` member is 8 bytes and a `FString` member is 16, so a reader that only
+accepts one width returns empty for the other with no error. `ReadPropertyAt`
+dispatches on the reflected type, which is the only reliable way to tell them
+apart. Check the field's declared type in the SDK header when a read comes back
+empty but the offset looks right.
 
 Example: draw the first icon-like object member of a row.
 
@@ -925,9 +982,10 @@ therefore owns the version-specific structure.
 - A hook veto skips the original call while the caller continues as if it ran.
   Use it only when skipping leaves a valid state. Address vetoes are bound to one
   engine build.
-- `IsModAsset` reads paks under `<game>/Content/Paks/~mods` once per process. An
-  encrypted pak index is skipped, and content mounted after the first call is not
-  seen.
+- `IsModAsset` reads containers in the mod folders under `Content/Paks` once per
+  process. An encrypted container index is skipped, and content mounted after the
+  first call is not seen. `~Mods`, `LogicMods` and `mods` are all indexed; `.ucas`
+  holds chunk data and names no packages.
 - No standalone FText value constructor. `RC::Widgets::SetText` builds one through
   the engine; text properties can otherwise be copied as raw bytes.
 - New widget Blueprint classes and new cooked texture assets cannot be created.

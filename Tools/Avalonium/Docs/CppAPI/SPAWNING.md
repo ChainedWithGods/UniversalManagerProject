@@ -129,11 +129,11 @@ Rules that keep a veto safe:
 
 ---
 
-## 4. Mark content that comes from a local pak
+## 4. Mark content that comes from a local container
 
-A local pak under `<game>/Content/Paks/~mods` can mount into the game's own asset
-paths, so a package path cannot tell a re-skin from base content. `IsModAsset`
-resolves the object's outermost package against the pak set:
+A local container in a mod folder under `Content/Paks` can mount into the game's
+own asset paths, so a package path cannot tell a re-skin from base content.
+`IsModAsset` resolves the object's outermost package against the container set:
 
 ```cpp
 bool IsModContent(RC::Unreal::UObject* object)
@@ -142,15 +142,19 @@ bool IsModContent(RC::Unreal::UObject* object)
 }
 ```
 
-The runtime scans `~mods` once, reads each pak's mount point and file list, maps
-them to package paths and caches the set. Two cases match:
+The runtime scans `~Mods`, `LogicMods` and `mods` once, reads each container's
+mount point and file list, maps them to package paths and caches the set. All
+three are matched case-insensitively, since users create these folders by hand.
+Both `.pak` and `.utoc` are read: a mod shipped as IoStore usually carries a stub
+`.pak` with no paths and keeps every asset in the paired `.utoc`, so a `.pak`-only
+scan sees an empty mod. Two cases match:
 
 - A package the mod adds, such as a new item class or data table.
-- A game package whose asset a mod pak overrides, such as a weapon material or
-  icon texture.
+- A game package whose asset a mod container overrides, such as a weapon material
+  or icon texture.
 
 Check the item itself and the assets it displays. A base weapon wearing a skin
-pak is still a base actor; its icon and materials are what identify it:
+container is still a base actor; its icon and materials are what identify it:
 
 ```cpp
 entry.IsMod = component->IsModAsset();
@@ -159,11 +163,38 @@ if (!entry.IsMod && entry.Icon)
 ```
 
 A mod that mounts under a mod-specific path such as `/Game/Mod/...` is also caught
-by a path test. The pak check covers the paks that mount into the game's own
-paths.
+by a path test. The container check covers the containers that mount into the
+game's own paths.
 
-The index is built on the first call. An encrypted pak index is skipped, and a
-mount added after that call is not in the set.
+### When there is no object to ask
+
+A table row names its assets as strings, so there is nothing loaded to pass to
+`IsModAsset`. `is_mod_package_path` answers the same question from the path:
+
+```cpp
+const AvaloniumModApi* api = Avalonium::Detail::Api();
+bool fromMod = api && api->is_mod_package_path(row.MeshPath.c_str());
+```
+
+It accepts `/Game/X/Y.Y`, `SkeletalMesh'/Game/X/Y.Y'` and
+`SB/Content/X/Y.uasset`, and strips the trailing `.ObjectName` so a row's path
+compares equal to a container's path. `mod_package_count()` tells you whether the
+index resolved anything before you debug a join that produced zero.
+
+This is the only way to mark a cosmetic row that carries no mesh of its own. Such
+a row points at a shared placeholder, and the real asset is reached through a
+second table:
+
+```
+ItemTable.EquipmentAlias -> EquipmentTable.MountingResourcePath -> package
+```
+
+Read `EquipmentAlias` with `ReadPropertyAt`, not a raw byte copy: it is an `FName`
+(8 bytes), and a reader that only accepts `FString` (16 bytes) returns empty for
+every row without reporting anything wrong.
+
+The index is built on the first call. An encrypted container index is skipped, and
+a mount added after that call is not in the set.
 
 ---
 
