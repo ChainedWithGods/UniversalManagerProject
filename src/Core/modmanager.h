@@ -1058,6 +1058,12 @@ private:
                                 const QStringList& args,
                                 const QString& workingDir);
 
+    QString resolveSteamAppIdForGame(const QString& exePath) const;
+
+    QString resolveSteamExePath() const;
+
+    qint64 findProcessPidByExeName(const QString& exeName) const;
+
     void parseConflictResults(const QByteArray& jsonData);
     void onConflictScanTimeout();
     void groupConflictsByCharacter();
