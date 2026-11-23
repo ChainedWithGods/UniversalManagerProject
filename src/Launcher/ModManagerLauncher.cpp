@@ -126,6 +126,131 @@ bool ModManager::launchDetachedElevated(const QString& exePath,
 #endif
 }
 
+QString ModManager::resolveSteamExePath() const {
+
+    const QStringList libraries = readSteamLibraryPaths();
+    for (const QString& libraryPath : libraries) {
+        const QString candidate = QDir(libraryPath).filePath("steam.exe");
+        if (QFileInfo::exists(candidate)) {
+            return QDir::cleanPath(candidate);
+        }
+    }
+    return QString();
+}
+
+QString ModManager::resolveSteamAppIdForGame(const QString& exePath) const {
+    if (exePath.isEmpty()) {
+        return QString();
+    }
+
+    const QString cleanExe = canonicalOrCleanPath(exePath);
+    const QString exeDir = QFileInfo(cleanExe).absolutePath();
+
+    QStringList appIdProbeDirs = { exeDir };
+    QDir parentDir(exeDir);
+    if (parentDir.cdUp()) {
+        appIdProbeDirs.append(QDir::cleanPath(parentDir.absolutePath()));
+    }
+    for (const QString& probeDir : appIdProbeDirs) {
+        QFile appIdFile(QDir(probeDir).filePath("steam_appid.txt"));
+        if (!appIdFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            continue;
+        }
+        const QString firstLine = QString::fromUtf8(appIdFile.readLine()).trimmed();
+        appIdFile.close();
+        static const QRegularExpression digitsOnly("^\\d{1,10}$");
+        if (digitsOnly.match(firstLine).hasMatch()) {
+            return firstLine;
+        }
+    }
+
+    const QStringList libraries = readSteamLibraryPaths();
+    for (const QString& libraryPath : libraries) {
+        const QString steamAppsPath = QDir(libraryPath).filePath("steamapps");
+        QDir steamAppsDir(steamAppsPath);
+        if (!steamAppsDir.exists()) {
+            continue;
+        }
+
+        const QFileInfoList manifests = steamAppsDir.entryInfoList(
+            { "appmanifest_*.acf" }, QDir::Files);
+        for (const QFileInfo& manifestInfo : manifests) {
+            QFile manifest(manifestInfo.absoluteFilePath());
+            if (!manifest.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                continue;
+            }
+            const QString content = QString::fromUtf8(manifest.readAll());
+            manifest.close();
+
+            static const QRegularExpression installDirRe(
+                "\"installdir\"\\s*\"([^\"]+)\"",
+                QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpressionMatch installMatch = installDirRe.match(content);
+            if (!installMatch.hasMatch()) {
+                continue;
+            }
+            const QString installDir = installMatch.captured(1).trimmed();
+            if (installDir.isEmpty()) {
+                continue;
+            }
+
+            const QString gameRoot = canonicalOrCleanPath(
+                QDir(steamAppsPath).filePath("common/" + installDir));
+            if (gameRoot.isEmpty()) {
+                continue;
+            }
+
+            if (cleanExe.compare(gameRoot, Qt::CaseInsensitive) == 0 ||
+                cleanExe.startsWith(gameRoot + "/", Qt::CaseInsensitive)) {
+
+                static const QRegularExpression appIdFromName(
+                    "appmanifest_(\\d+)\\.acf$",
+                    QRegularExpression::CaseInsensitiveOption);
+                const QRegularExpressionMatch appIdMatch =
+                    appIdFromName.match(manifestInfo.fileName());
+                if (appIdMatch.hasMatch()) {
+                    return appIdMatch.captured(1);
+                }
+            }
+        }
+    }
+
+    return QString();
+}
+
+qint64 ModManager::findProcessPidByExeName(const QString& exeName) const {
+#ifdef Q_OS_WIN
+    if (exeName.isEmpty()) {
+        return 0;
+    }
+
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(PROCESSENTRY32W);
+
+    qint64 foundPid = 0;
+    if (Process32FirstW(hSnapshot, &pe)) {
+        do {
+            const QString procName = QString::fromWCharArray(pe.szExeFile);
+            if (procName.compare(exeName, Qt::CaseInsensitive) == 0) {
+                foundPid = static_cast<qint64>(pe.th32ProcessID);
+                break;
+            }
+        } while (Process32NextW(hSnapshot, &pe));
+    }
+
+    CloseHandle(hSnapshot);
+    return foundPid;
+#else
+    Q_UNUSED(exeName);
+    return 0;
+#endif
+}
+
 QString ModManager::launchGame() {
     QString executablePath = QUrl(m_gamePath).toLocalFile();
     if (executablePath.isEmpty()) {
@@ -154,29 +279,88 @@ QString ModManager::launchGame() {
     }
 
     const QString workingDir = exeInfo.absolutePath();
+    const QString exeName = exeInfo.fileName();
 
-    qint64 pid = 0;
-    const bool success = QProcess::startDetached(executablePath, {}, workingDir, &pid);
-    if (!success) {
-        return "Failed to launch game";
-    }
+    const QString steamAppId = resolveSteamAppIdForGame(executablePath);
+    const QString steamExePath = steamAppId.isEmpty() ? QString() : resolveSteamExePath();
 
-    m_lastLaunchedGamePid = pid;
     m_gameWindowTitle.clear();
 
-    auto* titleTimer = new QTimer(this);
-    titleTimer->setInterval(500);
-    int* attempts = new int(0);
-    connect(titleTimer, &QTimer::timeout, this, [this, titleTimer, attempts]() {
-        m_gameWindowTitle = getGameWindowTitleFromPid(m_lastLaunchedGamePid);
-        (*attempts)++;
-        if (!m_gameWindowTitle.isEmpty() || *attempts >= 20) {
-            titleTimer->stop();
-            titleTimer->deleteLater();
-            delete attempts;
+    if (!steamAppId.isEmpty() && !steamExePath.isEmpty()) {
+        qint64 steamPid = 0;
+        const bool steamStarted = QProcess::startDetached(
+            steamExePath, { "-applaunch", steamAppId }, QFileInfo(steamExePath).absolutePath(), &steamPid);
+        if (!steamStarted) {
+            return "Failed to launch game through Steam";
         }
-    });
-    titleTimer->start();
+
+        m_lastLaunchedGamePid = 0;
+        auto* adoptTimer = new QTimer(this);
+        adoptTimer->setInterval(500);
+        int* adoptAttempts = new int(0);
+        connect(adoptTimer, &QTimer::timeout, this, [this, adoptTimer, adoptAttempts, exeName]() {
+            const qint64 foundPid = findProcessPidByExeName(exeName);
+            (*adoptAttempts)++;
+            if (foundPid > 0) {
+                m_lastLaunchedGamePid = foundPid;
+                adoptTimer->stop();
+                adoptTimer->deleteLater();
+                delete adoptAttempts;
+                return;
+            }
+            if (*adoptAttempts >= 120) {
+                adoptTimer->stop();
+                adoptTimer->deleteLater();
+                delete adoptAttempts;
+            }
+        });
+        adoptTimer->start();
+
+        auto* titleTimer = new QTimer(this);
+        titleTimer->setInterval(500);
+        int* attempts = new int(0);
+        connect(titleTimer, &QTimer::timeout, this, [this, titleTimer, attempts]() {
+            if (m_lastLaunchedGamePid <= 0) {
+                (*attempts)++;
+                if (*attempts >= 120) {
+                    titleTimer->stop();
+                    titleTimer->deleteLater();
+                    delete attempts;
+                }
+                return;
+            }
+            m_gameWindowTitle = getGameWindowTitleFromPid(m_lastLaunchedGamePid);
+            (*attempts)++;
+            if (!m_gameWindowTitle.isEmpty() || *attempts >= 120) {
+                titleTimer->stop();
+                titleTimer->deleteLater();
+                delete attempts;
+            }
+        });
+        titleTimer->start();
+    } else {
+        qint64 pid = 0;
+        const bool success = QProcess::startDetached(executablePath, {}, workingDir, &pid);
+        if (!success) {
+            return "Failed to launch game";
+        }
+
+        m_lastLaunchedGamePid = pid;
+
+        auto* titleTimer = new QTimer(this);
+        titleTimer->setInterval(500);
+        int* attempts = new int(0);
+        connect(titleTimer, &QTimer::timeout, this, [this, titleTimer, attempts]() {
+            m_gameWindowTitle = getGameWindowTitleFromPid(m_lastLaunchedGamePid);
+            (*attempts)++;
+            if (!m_gameWindowTitle.isEmpty() || *attempts >= 20) {
+                titleTimer->stop();
+                titleTimer->deleteLater();
+                delete attempts;
+            }
+        });
+        titleTimer->start();
+    }
 
     if (!m_avaloniumStatus.isEmpty() || !m_universalRuntimeLog.isEmpty()) {
         m_universalRuntimeLog.clear();
