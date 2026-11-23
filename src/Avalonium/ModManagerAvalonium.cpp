@@ -1078,6 +1078,16 @@ QString ModManager::injectAvaloniumDll() {
         }
         m_lastLaunchedGamePid = m_selectedProcessPid;
     } else {
+
+        if (m_lastLaunchedGamePid <= 0 && !m_gamePath.isEmpty()) {
+            QString executablePath = QUrl(m_gamePath).toLocalFile();
+            if (executablePath.isEmpty()) {
+                executablePath = m_gamePath;
+            }
+            executablePath = QDir::cleanPath(executablePath);
+            const QString exeName = QFileInfo(executablePath).fileName();
+            m_lastLaunchedGamePid = findProcessPidByExeName(exeName);
+        }
         if (m_lastLaunchedGamePid <= 0) {
             return "No launched game process found. Launch the game first";
         }
