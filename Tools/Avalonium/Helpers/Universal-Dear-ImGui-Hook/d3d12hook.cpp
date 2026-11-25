@@ -42,6 +42,8 @@ namespace d3d12hook {
     static bool                   gAfterFirstPresent = false;
     static bool                   gWin32Initialized = false;
     static bool                   gDx12BackendInitialized = false;
+
+    static bool                   gOverlayTargetSrgb = false;
     static bool                   gSawCompatibleSwapChain = false;
     static UINT                   gMissingCommandQueueFrames = 0;
     static UINT                   gFramesToSkipAfterReinit = 0;
@@ -137,6 +139,24 @@ namespace d3d12hook {
         FreeSrvSlot(cpu);
     }
 
+    static bool IsSrgbFormat(DXGI_FORMAT format)
+    {
+        switch (format)
+        {
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    static bool EffectiveViewSrgb(bool assetSrgb)
+    {
+        return assetSrgb && gOverlayTargetSrgb;
+    }
+
     static DXGI_FORMAT ViewableFormat(DXGI_FORMAT format, bool srgb)
     {
         switch (format)
@@ -192,7 +212,7 @@ namespace d3d12hook {
 
         D3D12_SHADER_RESOURCE_VIEW_DESC view{};
         view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        view.Format = ViewableFormat(desc.Format, srgb);
+        view.Format = ViewableFormat(desc.Format, EffectiveViewSrgb(srgb));
         if (desc.DepthOrArraySize > 1)
         {
             view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
@@ -776,6 +796,8 @@ namespace d3d12hook {
                 initInfo.CommandQueue = gCommandQueue;
                 initInfo.NumFramesInFlight = static_cast<int>(gBufferCount);
                 initInfo.RTVFormat = desc.BufferDesc.Format;
+
+                gOverlayTargetSrgb = IsSrgbFormat(desc.BufferDesc.Format);
                 initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
                 initInfo.SrvDescriptorHeap = gHeapSRV;
                 initInfo.SrvDescriptorAllocFn = &ImGuiSrvAlloc;
@@ -1079,6 +1101,8 @@ namespace d3d12hook {
                 initInfo.CommandQueue = gCommandQueue;
                 initInfo.NumFramesInFlight = static_cast<int>(gBufferCount);
                 initInfo.RTVFormat = desc.BufferDesc.Format;
+
+                gOverlayTargetSrgb = IsSrgbFormat(desc.BufferDesc.Format);
                 initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
                 initInfo.SrvDescriptorHeap = gHeapSRV;
                 initInfo.SrvDescriptorAllocFn = &ImGuiSrvAlloc;
