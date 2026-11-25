@@ -755,7 +755,7 @@ bool FindGUObjectArray(EngineState &state) {
   }
 
   if (!skipPatternScan) {
-    Log("[Discovery] Default GUObjectArray scan failed. Don't worry, let Avalonium cock!");
+    Log("[Discovery] Default GUObjectArray scan failed. Don't worry, let Avalonium cook!");
   } else {
     Log("[Discovery] Obfuscation scan active (SkipPatternScan=true)");
   }
